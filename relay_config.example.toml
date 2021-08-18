@@ -1,0 +1,7 @@
+bind_host = "0.0.0.0"
+bind_port = "443"
+ssl_private_key_path = "./ssl.key"
+ssl_cert_path = "./ssl.crt"
+remote_host = "remote.com"
+remote_port = "443"
+verbose_level = "2"
