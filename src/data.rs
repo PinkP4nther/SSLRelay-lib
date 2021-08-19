@@ -128,12 +128,8 @@ impl DataHandler {
 
             stream.write_all(&data).unwrap();
             let _ = stream.flush();
-            //println!("[+] Relayed -> {}", host);
-
-            //return Some(stream); Instead of returning we will now set stream object
             self.relay_stream = Some(stream);
             return Some(0);
         }
     }
-
 } // DataHandler

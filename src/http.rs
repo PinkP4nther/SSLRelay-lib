@@ -21,8 +21,8 @@ pub struct RelayRequest<'a> {
     http_body: Option<String>,
 }
 
-/*
-fn get_req_headers<'a>(&self, data: &'a Vec<u8>) -> Option<Vec<Header<'a>>> {
+/* Unused HTTP helper functions
+pub fn get_req_headers<'a>(data: &'a Vec<u8>) -> Option<Vec<Header<'a>>> {
 
     let mut headers = [httparse::EMPTY_HEADER; 128];
     let mut request = httparse::Request::new(&mut headers);
@@ -35,7 +35,7 @@ fn get_req_headers<'a>(&self, data: &'a Vec<u8>) -> Option<Vec<Header<'a>>> {
     None
 }
 
-fn get_res_headers(data: &Vec<u8>) -> Option<Vec<Header>> {
+pub fn get_res_headers(data: &Vec<u8>) -> Option<Vec<Header>> {
 
     let mut headers = [httparse::EMPTY_HEADER; 128];
     let mut response = httparse::Response::new(&mut headers);
@@ -48,7 +48,7 @@ fn get_res_headers(data: &Vec<u8>) -> Option<Vec<Header>> {
     None
 }
 
-fn get_host(&self, data: &Vec<u8>) -> Option<String> {
+pub fn get_host(data: &Vec<u8>) -> Option<String> {
 
     return Some("137.220.37.67".to_string());
     let mut headers = [httparse::EMPTY_HEADER; 128];
@@ -78,7 +78,7 @@ fn get_host(&self, data: &Vec<u8>) -> Option<String> {
     }
 }
 
-fn get_cookie(&self, data: &Vec<u8>) -> Option<String> {
+pub fn get_cookie(data: &Vec<u8>) -> Option<String> {
 
     let mut headers = [httparse::EMPTY_HEADER; 128];
 
@@ -107,7 +107,6 @@ fn get_cookie(&self, data: &Vec<u8>) -> Option<String> {
     }
 }
 */
-
 pub fn http_req_verbose(data: &Vec<u8>, mode: u8) {
 
     let req_info = get_request(&data);
@@ -306,7 +305,6 @@ pub fn get_http_body(data: &Vec<u8>, headers: Vec<Header>) -> Option<Vec<u8>> {
                 } else {
                     return Some(blob);
                 }
-
             }
         }
     }

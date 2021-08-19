@@ -23,7 +23,6 @@ struct RelayConfig {
     ssl_private_key_path: String,
     ssl_cert_path: String,
     verbose_level: i8,
-
 }
 
 pub trait HandlerCallbacks {
@@ -44,7 +43,6 @@ pub struct SSLRelay<H>
 where
     H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static,
 {
-    
     config: Option<RelayConfig>,
     handlers: Option<H>,
 }
