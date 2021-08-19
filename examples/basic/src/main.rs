@@ -11,22 +11,22 @@ struct Handler;
 impl HandlerCallbacks for Handler {
 
     // Request non blocking callback
-    fn req_nb_callback(&self, _in_data: Vec<u8>) {
+    fn ds_nb_callback(&self, _in_data: Vec<u8>) {
         println!("[+] Request Non Blocking CallBack!");
     }
 
     // Request blocking callback
-    fn req_b_callback(&self, _in_data: &mut Vec<u8>) {
+    fn ds_b_callback(&self, _in_data: &mut Vec<u8>) {
         println!("[+] Request Blocking CallBack!");
     }
 
     // Response non blocking callback
-    fn res_nb_callback(&self, _in_data: Vec<u8>) {
+    fn us_nb_callback(&self, _in_data: Vec<u8>) {
         println!("[+] Response Non Blocking CallBack!");
     }
 
     // Response blocking callback
-    fn res_b_callback(&self, _in_data: &mut Vec<u8>) {
+    fn us_b_callback(&self, _in_data: &mut Vec<u8>) {
         println!("[+] Response Blocking CallBack!");
     }
 }
