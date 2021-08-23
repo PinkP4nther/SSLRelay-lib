@@ -16,14 +16,14 @@ mod http;
 use http as http_helper;
 
 #[derive(Clone)]
-struct RelayConfig {
-    bind_host: String,
-    bind_port: String,
-    remote_host: String,
-    remote_port: String,
-    ssl_private_key_path: String,
-    ssl_cert_path: String,
-    verbose_level: i8,
+pub struct RelayConfig {
+    pub bind_host: String,
+    pub bind_port: String,
+    pub remote_host: String,
+    pub remote_port: String,
+    pub ssl_private_key_path: String,
+    pub ssl_cert_path: String,
+    pub verbose_level: i8,
 }
 
 pub trait HandlerCallbacks {
@@ -36,6 +36,7 @@ pub trait HandlerCallbacks {
 pub enum ConfigType<T> {
     Env,
     Path(T),
+    Conf(RelayConfig),
     Default,
 }
 
@@ -117,6 +118,9 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
                     }
                 };
             },
+            ConfigType::Conf(conf) => {
+                return conf;
+            }
             ConfigType::Default => {}
         }
 
