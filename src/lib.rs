@@ -2,9 +2,10 @@ use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{process, thread};
 use std::env;
 use std::fs;
+use std::path::Path;
 
 use toml::Value as TValue;
 
@@ -143,6 +144,14 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
     }
 
     fn setup_ssl_config(&self, priv_key: String, cert: String) -> Arc<SslAcceptor> {
+        
+        if !Path::new(priv_key.as_str()).exists() {
+            println!("[-] [{}] does not exist!", priv_key);
+            process::exit(-1);
+        } else if !Path::new(cert.as_str()).exists() {
+            println!("[-] [{}] does not exist!", cert);
+            process::exit(-1);
+        }
 
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
         acceptor.set_private_key_file(priv_key, SslFiletype::PEM).unwrap();

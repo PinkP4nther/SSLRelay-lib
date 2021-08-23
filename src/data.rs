@@ -31,72 +31,78 @@ impl DataHandler {
     pub fn get_data_stream(&mut self, data: &mut Vec<u8>) -> usize {
 
         let mut data_length: usize = 0;
-        if self.stream_direction == StreamDirection::DownStream {
-            loop {
 
-                let mut r_buf = [0; 1024];
+        match self.stream_direction {
 
-                match self.tcp_stream.as_mut().unwrap().read(&mut r_buf) {
+            StreamDirection::DownStream => {
 
-                    Ok(bytes_read) => {
+                loop {
 
-                        if bytes_read == 0 {
-                            break;
+                    let mut r_buf = [0; 1024];
 
-                        } else if bytes_read != 0 && bytes_read <= 1024 {
+                    match self.tcp_stream.as_mut().unwrap().read(&mut r_buf) {
 
-                            let mut tmp_buf = r_buf.to_vec();
-                            tmp_buf.truncate(bytes_read);
+                        Ok(bytes_read) => {
 
-                            let _bw = data.write(&tmp_buf).unwrap();
-                            data_length += bytes_read;
-
-                        } else {
-                            println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
-                        }
-                    },
-                    Err(e) => {
-                        match e.kind() {
-                            io::ErrorKind::WouldBlock => {
+                            if bytes_read == 0 {
                                 break;
-                            },
-                            _ => {println!("[!!!] Got error: {}",e);}
-                        }
-                    },
+
+                            } else if bytes_read != 0 && bytes_read <= 1024 {
+
+                                let mut tmp_buf = r_buf.to_vec();
+                                tmp_buf.truncate(bytes_read);
+
+                                let _bw = data.write(&tmp_buf).unwrap();
+                                data_length += bytes_read;
+
+                            } else {
+                                println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
+                            }
+                        },
+                        Err(e) => {
+                            match e.kind() {
+                                io::ErrorKind::WouldBlock => {
+                                    break;
+                                },
+                                _ => {println!("[!!!] Got error: {}",e);}
+                            }
+                        },
+                    }
                 }
-            }
-        } else if self.stream_direction == StreamDirection::Upstream {
-            loop {
+            },
+            StreamDirection::Upstream => {
+                loop {
 
-                let mut r_buf = [0; 1024];
+                    let mut r_buf = [0; 1024];
 
-                match self.relay_stream.as_mut().unwrap().read(&mut r_buf) {
+                    match self.relay_stream.as_mut().unwrap().read(&mut r_buf) {
 
-                    Ok(bytes_read) => {
+                        Ok(bytes_read) => {
 
-                        if bytes_read == 0 {
-                            break;
-
-                        } else if bytes_read != 0 && bytes_read <= 1024 {
-
-                            let mut tmp_buf = r_buf.to_vec();
-                            tmp_buf.truncate(bytes_read);
-
-                            let _bw = data.write(&tmp_buf).unwrap();
-                            data_length += bytes_read;
-
-                        } else {
-                            println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
-                        }
-                    },
-                    Err(e) => {
-                        match e.kind() {
-                            io::ErrorKind::WouldBlock => {
+                            if bytes_read == 0 {
                                 break;
-                            },
-                            _ => {println!("[!!!] Got error: {}",e);}
-                        }
-                    },
+
+                            } else if bytes_read != 0 && bytes_read <= 1024 {
+
+                                let mut tmp_buf = r_buf.to_vec();
+                                tmp_buf.truncate(bytes_read);
+
+                                let _bw = data.write(&tmp_buf).unwrap();
+                                data_length += bytes_read;
+
+                            } else {
+                                println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
+                            }
+                        },
+                        Err(e) => {
+                            match e.kind() {
+                                io::ErrorKind::WouldBlock => {
+                                    break;
+                                },
+                                _ => {println!("[!!!] Got error: {}",e);}
+                            }
+                        },
+                    }
                 }
             }
         }
