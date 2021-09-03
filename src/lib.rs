@@ -1,6 +1,5 @@
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod, SslStream};
-use std::io::Write;
-use std::net::{TcpListener, TcpStream};
+use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
+use std::net::{TcpListener};
 use std::sync::{Arc, Mutex};
 use std::{process, thread};
 use std::env;
@@ -10,10 +9,7 @@ use std::path::Path;
 use toml::Value as TValue;
 
 mod data;
-use data::{DataHandler, StreamDirection};
-
-mod http;
-use http as http_helper;
+use data::FullDuplexTcp;
 
 #[derive(Clone)]
 pub struct RelayConfig {
@@ -23,7 +19,6 @@ pub struct RelayConfig {
     pub remote_port: String,
     pub ssl_private_key_path: String,
     pub ssl_cert_path: String,
-    pub verbose_level: i8,
 }
 
 pub trait HandlerCallbacks {
@@ -43,19 +38,27 @@ pub enum ConfigType<T> {
 #[derive(Clone)]
 pub struct SSLRelay<H>
 where
-    H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static,
+    H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static,
 {
     config: Option<RelayConfig>,
-    handlers: Option<H>,
+    handlers: Option<InnerHandlers<H>>,
 }
 
-impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLRelay<H> {
+#[derive(Clone)]
+pub struct InnerHandlers<H>
+where
+    H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static,
+{
+    cb: H
+}
+
+impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static> SSLRelay<H> {
 
     pub fn new(handlers: H) -> Self {
 
         SSLRelay {
             config: None,
-            handlers: Some(handlers),
+            handlers: Some(InnerHandlers{cb: handlers}),
         }
     }
 
@@ -66,7 +69,11 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
     pub fn start(&mut self) {
 
         let rc_pointer = Arc::new(Mutex::new(self.config.as_ref().unwrap().clone()));
-        let handler_pointer = Arc::new(Mutex::new(self.handlers.take().unwrap()));
+
+        let rhost = rc_pointer.lock().unwrap().remote_host.clone();
+        let rport = rc_pointer.lock().unwrap().remote_port.clone();
+        let remote_endpoint = format!("{}:{}", rhost, rport);
+
         let acceptor = self.setup_ssl_config(self.config.as_ref().unwrap().ssl_private_key_path.clone(), self.config.as_ref().unwrap().ssl_cert_path.clone());
         let listener = TcpListener::bind(format!("{}:{}", self.config.as_ref().unwrap().bind_host.clone(), self.config.as_ref().unwrap().bind_port.clone())).unwrap();
 
@@ -76,26 +83,23 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
                 Ok(stream) => {
 
                     let acceptor = acceptor.clone();
-                    let rc_config = rc_pointer.clone();
-                    let handler = handler_pointer.clone();
+                    //let rc_config = rc_pointer.clone();
+                    let handler_clone = self.handlers.as_ref().unwrap().clone();
+                    let r_endpoint = remote_endpoint.clone();
 
                     thread::spawn(move || {
 
                         match acceptor.accept(stream) {
                             Ok(stream) => {
-
-                                handle_stream(stream, rc_config, handler);
-                                return 0;
+                                // FULL DUPLEX OBJECT CREATION HERE
+                                FullDuplexTcp::new(stream, r_endpoint, handler_clone).handle();
                             },
                             Err(e) => {
 
                                 println!("[Error] {}", e);
-                                return -1;
                             }
                         }
                     });
-                    /*let stream = acceptor.accept(stream).unwrap();
-                    handle_stream(stream, rc_config, handler);*/
                 },
                 Err(e) => {println!("[Error] Tcp Connection Failed: {}", e)}
             }
@@ -134,7 +138,6 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
         let ssl_cert_path = config_parsed["ssl_cert_path"].to_string().replace("\"", "");
         let remote_host = config_parsed["remote_host"].to_string().replace("\"", "");
         let remote_port = config_parsed["remote_port"].to_string().replace("\"", "");
-        let verbose_level = config_parsed["verbose_level"].to_string().replace("\"", "").parse().unwrap();
 
         RelayConfig {
             bind_host: bind_host.clone(),
@@ -143,7 +146,6 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
             ssl_cert_path: ssl_cert_path.clone(),
             remote_host: remote_host.clone(),
             remote_port: remote_port.clone(),
-            verbose_level: verbose_level,
         }
     }
 
@@ -164,80 +166,3 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static> SSLR
         Arc::new(acceptor.build())
     }
 }// SSLRelay
-
-/* Rewrite this to handle TCP connections until TCP connection is dropped instead of dropping it */
-fn handle_stream<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + 'static>(tcp_stream: SslStream<TcpStream>, rc_config: Arc<Mutex<RelayConfig>>, handlers: Arc<Mutex<H>>) {
-
-    let conf_lock = rc_config.lock().unwrap();
-    let remote_host = format!("{}:{}", conf_lock.remote_host, conf_lock.remote_port);
-    let verbose_mode = conf_lock.verbose_level;
-    drop(conf_lock);
-
-    let mut datahandler = DataHandler::new(tcp_stream, remote_host);
-
-    let mut data = Vec::<u8>::new();
-    let mut response_data = Vec::<u8>::new();
-
-    let data_size = datahandler.get_data_stream(&mut data);
-    if data_size == 0 {
-        println!("[!] Got 0 bytes closing tcp stream!");
-        return;
-    }
-    if verbose_mode == 1 {
-        http_helper::http_req_verbose(&data, 1);
-    } else if verbose_mode == 2 {
-        http_helper::http_req_verbose(&data, 2);
-    }
-
-    let handlers_p = handlers.clone();
-    let d = data.clone();
-
-    thread::spawn(move || {
-        let handlers_lock = handlers_p.lock().unwrap();
-        handlers_lock.ds_nb_callback(d);
-        drop(handlers_lock);
-    });
-
-    let handlers_p = handlers.clone();
-    let handlers_lock = handlers_p.lock().unwrap();
-    handlers_lock.ds_b_callback(&mut data);
-    drop(handlers_lock);
-
-    match datahandler.relay_data(&data) {
-        Some(_relay_success) => {},
-        None => {
-            println!("[-] relay_data failed!");
-            return;
-        }
-    }
-
-    // Get Upstream Data
-    datahandler.stream_direction = StreamDirection::Upstream;
-    let _response_size = datahandler.get_data_stream(&mut response_data);
-
-    if verbose_mode == 1 {
-        http_helper::http_res_verbose(&response_data, 1);
-    } else if verbose_mode == 2 {
-        http_helper::http_res_verbose(&response_data, 2);
-    }
-
-    // Switch back to DownStream mode to relay data from remote host back to origin host
-    datahandler.stream_direction = StreamDirection::DownStream;
-
-    let handlers_p = handlers.clone();
-    let d = response_data.clone();
-
-    thread::spawn(move || {
-        let handlers_lock = handlers_p.lock().unwrap();
-        handlers_lock.us_nb_callback(d);
-        drop(handlers_lock);
-    });
-
-    let handlers_p = handlers.clone();
-    let handlers_lock = handlers_p.lock().unwrap();
-    handlers_lock.us_b_callback(&mut response_data);
-    drop(handlers_lock);
-
-    datahandler.tcp_stream.as_mut().unwrap().write_all(&response_data).unwrap();
-    let _ = datahandler.tcp_stream.as_mut().unwrap().flush();
-}

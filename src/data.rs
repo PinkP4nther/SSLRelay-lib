@@ -1,141 +1,432 @@
 use std::time::Duration;
 use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
-use std::net::TcpStream;
 use std::io::{self, Read, Write};
+use std::net::{TcpStream, Shutdown};
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::sync::{Arc, Mutex};
 
-#[derive(PartialEq)]
-pub enum StreamDirection {
-    Upstream,// Data coming from remote host
-    DownStream,// Data coming from origin host
+use crate::{HandlerCallbacks, InnerHandlers};
+
+enum FullDuplexTcpState {
+    DownStreamRead,
+    DownStreamWrite(Vec<u8>),
+    UpStreamRead,
+    UpStreamWrite(Vec<u8>),
+    DownStreamShutDown,
+    UpStreamShutDown,
 }
 
-pub struct DataHandler {
-    pub tcp_stream: Option<SslStream<TcpStream>>,
-    relay_stream: Option<SslStream<TcpStream>>,
-    remote_host: String,
-    pub stream_direction: StreamDirection,
+enum DataPipe {
+    DataWrite(Vec<u8>),
+    Finished,
+    Shutdown,
 }
 
-impl DataHandler {
+struct DownStreamInner {
+    ds_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
+    internal_data_buffer: Vec<u8>,
+}
 
-    pub fn new(tcp_stream: SslStream<TcpStream>, remote_host: String) -> Self {
-        let _ = tcp_stream.get_ref().set_read_timeout(Some(Duration::from_millis(100)));
-        DataHandler {
-            tcp_stream: Some(tcp_stream),
-            relay_stream: None,
-            remote_host,
-            stream_direction: StreamDirection::DownStream,
+impl DownStreamInner {
+    pub fn ds_handler(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
+
+        loop {
+
+            match data_in.recv_timeout(Duration::from_millis(100)) {
+
+                // DataPipe Received
+                Ok(data_received) => {
+
+                    match data_received {
+                        DataPipe::DataWrite(data) => {
+
+                            let mut stream_lock = match self.ds_stream.as_ref().unwrap().lock() {
+                                Ok(sl) => sl,
+                                Err(_e) => {
+                                    println!("[!] Failed to get stream lock!");
+                                    return;
+                                }
+                            };
+
+                            match stream_lock.write_all(&data) {
+                                Ok(()) => {},
+                                Err(_e) => {
+                                    println!("[!] Failed to write data to DownStream tcp stream!");
+                                }
+                            }
+                            let _ = stream_lock.flush();
+                            drop(stream_lock);
+
+                            let _ = data_out.send(FullDuplexTcpState::DownStreamRead);
+                        },
+                        DataPipe::Shutdown => {
+                            let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                            return;
+                        },
+                        _ => {}
+                    }
+                },
+                Err(_e) => {
+                    match _e {
+                        mpsc::RecvTimeoutError::Timeout => {},
+                        mpsc::RecvTimeoutError::Disconnected => {
+                            println!("[!] DownStream data_in channel is disconnected!");
+                        }
+                    }
+                }
+            }// End of data_in receive
+
+            // If received data
+            if let Some(byte_count) = self.get_data_stream() {
+                if byte_count > 0 {
+
+                    let _ = data_out.send(FullDuplexTcpState::UpStreamWrite(self.internal_data_buffer.clone()));
+                    if let DataPipe::Finished = data_in.recv().unwrap() {
+                        self.internal_data_buffer.clear();
+                        continue;
+                    } else {
+                        println!("[!] Could not receive DataPipe::Finished notifier!");
+                    }
+
+                } else if byte_count == 0 {
+
+                    let _ = data_out.send(FullDuplexTcpState::DownStreamShutDown);
+                    let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                    return;
+                } else if byte_count == -1 {
+                    continue;
+                }
+            } else {
+
+            }
         }
     }
 
-    pub fn get_data_stream(&mut self, data: &mut Vec<u8>) -> usize {
+    fn get_data_stream(&mut self) -> Option<i64> {
 
-        let mut data_length: usize = 0;
+        let mut data_length: i64 = 0;
 
-        match self.stream_direction {
+        loop {
 
-            StreamDirection::DownStream => {
+            let mut r_buf = [0; 1024];
 
-                loop {
+            match self.ds_stream.as_mut().unwrap().lock().unwrap().read(&mut r_buf) {
 
-                    let mut r_buf = [0; 1024];
+                Ok(bytes_read) => {
 
-                    match self.tcp_stream.as_mut().unwrap().read(&mut r_buf) {
+                    if bytes_read == 0 {
+                        break;
 
-                        Ok(bytes_read) => {
+                    } else if bytes_read != 0 && bytes_read <= 1024 {
 
-                            if bytes_read == 0 {
-                                break;
+                        let mut tmp_buf = r_buf.to_vec();
+                        tmp_buf.truncate(bytes_read);
 
-                            } else if bytes_read != 0 && bytes_read <= 1024 {
+                        let _bw = self.internal_data_buffer.write(&tmp_buf).unwrap();
+                        data_length += bytes_read as i64;
 
-                                let mut tmp_buf = r_buf.to_vec();
-                                tmp_buf.truncate(bytes_read);
+                    } else {
+                        println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
+                    }
+                },
+                Err(e) => {
+                    match e.kind() {
 
-                                let _bw = data.write(&tmp_buf).unwrap();
-                                data_length += bytes_read;
+                        io::ErrorKind::WouldBlock => {
+                            if data_length == 0 {
 
-                            } else {
-                                println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
+                                data_length = -1;
                             }
+                            break;
+
                         },
-                        Err(e) => {
-                            match e.kind() {
-                                io::ErrorKind::WouldBlock => {
-                                    break;
-                                },
-                                _ => {println!("[!!!] Got error: {}",e);}
+                        _ => {println!("[!!!] Got error: {}",e);}
+                    }
+                },
+            }
+        }
+        return Some(data_length);
+    }
+}
+
+struct UpStreamInner{
+    us_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
+    internal_data_buffer: Vec<u8>
+}
+
+impl UpStreamInner {
+    pub fn us_handler(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
+
+        loop {
+
+            match data_in.recv_timeout(Duration::from_millis(100)) {
+
+                Ok(data_received) => {
+
+                    match data_received {
+                        DataPipe::DataWrite(data) => {
+
+                            let mut stream_lock = match self.us_stream.as_ref().unwrap().lock() {
+                                Ok(sl) => sl,
+                                Err(_e) => {
+                                    println!("[!] Failed to get stream lock!");
+                                    return;
+                                }
+                            };
+
+                            match stream_lock.write_all(&data) {
+                                Ok(()) => {},
+                                Err(_e) => {
+                                    println!("[!] Failed to write data to DownStream tcp stream!");
+                                }
                             }
+                            let _ = stream_lock.flush();
+                            drop(stream_lock);
+
+                            let _ = data_out.send(FullDuplexTcpState::UpStreamRead);
                         },
+                        DataPipe::Shutdown => {
+                            let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                            return;
+                        }
+                        _ => {}
+                    }
+                },
+                Err(e) => {
+                    match e {
+                        mpsc::RecvTimeoutError::Timeout => {},
+                        mpsc::RecvTimeoutError::Disconnected => {
+                            println!("[!] UpStream data_in channel is disconnected!");
+                        }
                     }
                 }
-            },
-            StreamDirection::Upstream => {
-                loop {
+            }// End of data_in receive
 
-                    let mut r_buf = [0; 1024];
+            if let Some(byte_count) = self.get_data_stream() {
+                if byte_count > 0 {
 
-                    match self.relay_stream.as_mut().unwrap().read(&mut r_buf) {
-
-                        Ok(bytes_read) => {
-
-                            if bytes_read == 0 {
-                                break;
-
-                            } else if bytes_read != 0 && bytes_read <= 1024 {
-
-                                let mut tmp_buf = r_buf.to_vec();
-                                tmp_buf.truncate(bytes_read);
-
-                                let _bw = data.write(&tmp_buf).unwrap();
-                                data_length += bytes_read;
-
-                            } else {
-                                println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
-                            }
-                        },
-                        Err(e) => {
-                            match e.kind() {
-                                io::ErrorKind::WouldBlock => {
-                                    break;
-                                },
-                                _ => {println!("[!!!] Got error: {}",e);}
-                            }
-                        },
+                    let _ = data_out.send(FullDuplexTcpState::DownStreamWrite(self.internal_data_buffer.clone()));
+                    if let DataPipe::Finished = data_in.recv().unwrap() {
+                        self.internal_data_buffer.clear();
+                        continue;
+                    } else {
+                        println!("[!] Could not receive DataPipe::Finished notifier!");
                     }
+
+                } else if byte_count == 0 {
+
+                    let _ = data_out.send(FullDuplexTcpState::UpStreamShutDown);
+                    let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                    return;
+                } else if byte_count == -1 {
+                    continue;
+                }
+            } else {
+            }
+        }
+    }
+
+    fn get_data_stream(&mut self) -> Option<i64> {
+
+        let mut data_length: i64 = 0;
+
+        loop {
+
+            let mut r_buf = [0; 1024];
+
+            match self.us_stream.as_mut().unwrap().lock().unwrap().read(&mut r_buf) {
+
+                Ok(bytes_read) => {
+
+                    if bytes_read == 0 {
+
+                        break;
+
+                    } else if bytes_read != 0 && bytes_read <= 1024 {
+
+                        let mut tmp_buf = r_buf.to_vec();
+                        tmp_buf.truncate(bytes_read);
+
+                        let _bw = self.internal_data_buffer.write(&tmp_buf).unwrap();
+                        data_length += bytes_read as i64;
+
+                    } else {
+                        println!("[+] Else hit!!!!!!!!!!!!!!!!!!!!!!");
+                    }
+                },
+                Err(e) => {
+                    match e.kind() {
+
+                        io::ErrorKind::WouldBlock => {
+                            if data_length == 0 {
+                                data_length = -1;
+                            }
+                            break;
+                        },
+                        _ => {println!("[!!!] Got error: {}",e);}
+                    }
+                },
+            }
+        }
+        return Some(data_length);
+    }
+}
+
+pub struct FullDuplexTcp<H>
+where
+    H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static,
+{
+    ds_tcp_stream: Arc<Mutex<SslStream<TcpStream>>>,
+    us_tcp_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
+    remote_endpoint: String,
+    ds_inner_m: Arc<Mutex<DownStreamInner>>,
+    us_inner_m: Arc<Mutex<UpStreamInner>>,
+    inner_handlers: InnerHandlers<H>,
+}
+
+impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static> FullDuplexTcp<H> {
+
+    pub fn new(ds_tcp_stream: SslStream<TcpStream>, remote_endpoint: String, handlers: InnerHandlers<H>) -> Self {
+
+        let _ = ds_tcp_stream.get_ref().set_read_timeout(Some(Duration::from_millis(100)));
+
+        FullDuplexTcp {
+            ds_tcp_stream: Arc::new(Mutex::new(ds_tcp_stream)),
+            us_tcp_stream: None,
+            remote_endpoint,
+            ds_inner_m: Arc::new(Mutex::new(DownStreamInner{ds_stream: None, internal_data_buffer: Vec::<u8>::new()})),
+            us_inner_m: Arc::new(Mutex::new(UpStreamInner{us_stream: None, internal_data_buffer: Vec::<u8>::new()})),
+            inner_handlers: handlers,
+        }
+    }
+
+    pub fn handle(&mut self) {
+
+        if self.connect_endpoint() == -1 {
+            let _ = self.ds_tcp_stream.lock().unwrap().get_ref().shutdown(Shutdown::Both);
+            return;
+        }
+
+        let (state_sender, state_receiver): (Sender<FullDuplexTcpState>, Receiver<FullDuplexTcpState>) = mpsc::channel();
+        let (ds_data_pipe_sender, ds_data_pipe_receiver): (Sender<DataPipe>, Receiver<DataPipe>) = mpsc::channel();
+        let (us_data_pipe_sender, us_data_pipe_receiver): (Sender<DataPipe>, Receiver<DataPipe>) = mpsc::channel();
+
+        self.ds_inner_m.lock().unwrap().ds_stream = Some(self.ds_tcp_stream.clone());
+        let ds_method_pointer = self.ds_inner_m.clone();
+        let ds_state_bc = state_sender.clone();
+
+        self.us_inner_m.lock().unwrap().us_stream = Some(self.us_tcp_stream.as_ref().unwrap().clone());
+        let us_method_pointer = self.us_inner_m.clone();
+        let us_state_bc = state_sender.clone();
+
+        thread::spawn(move || {
+            ds_method_pointer.lock().unwrap().ds_handler(ds_state_bc, ds_data_pipe_receiver);
+        });
+
+        thread::spawn(move || {
+            us_method_pointer.lock().unwrap().us_handler(us_state_bc, us_data_pipe_receiver);
+        });
+
+        loop {
+
+            match state_receiver.recv() {
+                Ok(state_request) => {
+                    match state_request {
+
+                        // DownStream Write Request
+                        FullDuplexTcpState::DownStreamWrite(mut data) => {
+
+                            /*
+                                Callbacks that work with data from UpStream go here
+                            */
+
+                            let inner_handlers_clone = self.inner_handlers.clone();
+                            let in_data = data.clone();
+
+                            thread::spawn(move || {
+                                inner_handlers_clone.cb.us_nb_callback(in_data);
+                            });
+
+                            self.inner_handlers.cb.us_b_callback(&mut data);
+                            let _ = ds_data_pipe_sender.send(DataPipe::DataWrite(data));
+
+                            match state_receiver.recv().unwrap() {
+                                FullDuplexTcpState::DownStreamRead => {
+                                    let _ = us_data_pipe_sender.send(DataPipe::Finished);
+                                },
+                                _ => {}
+                            }
+                        },
+                        // UpStream Write Request
+                        FullDuplexTcpState::UpStreamWrite(mut data) => {
+
+                            /*
+                                Callbacks that work with data from DownStream go here
+                            */
+
+                            let inner_handlers_clone = self.inner_handlers.clone();
+                            let in_data = data.clone();
+
+                            thread::spawn(move || {
+                                inner_handlers_clone.cb.ds_nb_callback(in_data);
+                            });
+
+                            self.inner_handlers.cb.ds_b_callback(&mut data);
+                            let _ = us_data_pipe_sender.send(DataPipe::DataWrite(data));
+
+                            match state_receiver.recv().unwrap() {
+                                FullDuplexTcpState::UpStreamRead => {
+                                    let _ = ds_data_pipe_sender.send(DataPipe::Finished);
+                                },
+                                _ => {}
+                            }
+                        },
+                        // DownStreamShutDown Request
+                        FullDuplexTcpState::DownStreamShutDown => {
+                            let _ = us_data_pipe_sender.send(DataPipe::Shutdown);
+                            return;
+                        },
+                        // UpStreamShutDown Request
+                        FullDuplexTcpState::UpStreamShutDown => {
+                            let _ = ds_data_pipe_sender.send(DataPipe::Shutdown);
+                            return;
+                        },
+                        _ => {}
+                    }
+                },
+                Err(_e) => {
+                    println!("[!] State receiver communication channel has closed!");
                 }
             }
         }
-        return data_length;
     }
+    
+    fn connect_endpoint(&mut self) -> i8 {
 
-    pub fn relay_data(&mut self, data: &Vec<u8>) -> Option<i8> {
+        let mut sslbuilder = SslConnector::builder(SslMethod::tls()).unwrap();
+        sslbuilder.set_verify(SslVerifyMode::NONE);
 
-        let mut retries = 3;
-        loop {
+        let connector = sslbuilder.build();
 
-            let mut sslbuild = SslConnector::builder(SslMethod::tls()).unwrap();
-            sslbuild.set_verify(SslVerifyMode::NONE);
-            let connector = sslbuild.build();
-            let stream = TcpStream::connect(&self.remote_host).unwrap();
-            let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
-            let mut stream = match connector.connect(&self.remote_host, stream) {
-                Ok(s) => s,
-                Err(e) => {
-                    println!("[Error] {}", e);
-                    if retries == 0 {
-                        println!("[!] Request relay retries: 0");
-                        return None;
-                    }
-                    retries -= 1;
-                    continue;
-                }
-            };
+        let s = match TcpStream::connect(self.remote_endpoint.as_str()) {
+            Ok(s) => s,
+            Err(e) => {
+                println!("[!] Can't connect to remote host: {}\nErr: {}", self.remote_endpoint, e);
+                return -1;
+            }
+        };
 
-            stream.write_all(&data).unwrap();
-            let _ = stream.flush();
-            self.relay_stream = Some(stream);
-            return Some(0);
-        }
+        let r_host: Vec<&str> = self.remote_endpoint.as_str().split(":").collect();
+
+        let s = connector.connect(r_host[0], s).unwrap();
+
+        self.us_tcp_stream = Some(
+            Arc::new(
+            Mutex::new(
+                s
+            )));
+        let _ = self.us_tcp_stream.as_ref().unwrap().lock().unwrap().get_ref().set_read_timeout(Some(Duration::from_millis(100)));
+        return 0;
     }
-} // DataHandler
+}
