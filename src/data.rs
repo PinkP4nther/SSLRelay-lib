@@ -89,7 +89,7 @@ impl DownStreamInner {
                         println!("[!] Could not receive DataPipe::Finished notifier!");
                     }
 
-                } else if byte_count == 0 {
+                } else if byte_count == 0 || byte_count == -2 {
 
                     let _ = data_out.send(FullDuplexTcpState::DownStreamShutDown);
                     let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
@@ -107,11 +107,13 @@ impl DownStreamInner {
 
         let mut data_length: i64 = 0;
 
+        let mut stream_lock = self.ds_stream.as_mut().unwrap().lock().unwrap();
+
         loop {
 
             let mut r_buf = [0; 1024];
 
-            match self.ds_stream.as_mut().unwrap().lock().unwrap().read(&mut r_buf) {
+            match stream_lock.read(&mut r_buf) {
 
                 Ok(bytes_read) => {
 
@@ -120,10 +122,15 @@ impl DownStreamInner {
 
                     } else if bytes_read != 0 && bytes_read <= 1024 {
 
+                        /*
                         let mut tmp_buf = r_buf.to_vec();
                         tmp_buf.truncate(bytes_read);
+                        */
+                        
 
-                        let _bw = self.internal_data_buffer.write(&tmp_buf).unwrap();
+                        //let _bw = self.internal_data_buffer.write(&tmp_buf).unwrap();
+
+                        let _bw = self.internal_data_buffer.write(r_buf.split_at(bytes_read).0).unwrap();
                         data_length += bytes_read as i64;
 
                     } else {
@@ -140,6 +147,10 @@ impl DownStreamInner {
                             }
                             break;
 
+                        },
+                        io::ErrorKind::ConnectionReset => {
+                            data_length = -2;
+                            break;
                         },
                         _ => {println!("[!!!] Got error: {}",e);}
                     }
@@ -214,7 +225,7 @@ impl UpStreamInner {
                         println!("[!] Could not receive DataPipe::Finished notifier!");
                     }
 
-                } else if byte_count == 0 {
+                } else if byte_count == 0 || byte_count == -2 {
 
                     let _ = data_out.send(FullDuplexTcpState::UpStreamShutDown);
                     let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
@@ -231,11 +242,13 @@ impl UpStreamInner {
 
         let mut data_length: i64 = 0;
 
+        let mut stream_lock = self.us_stream.as_mut().unwrap().lock().unwrap();
+
         loop {
 
             let mut r_buf = [0; 1024];
 
-            match self.us_stream.as_mut().unwrap().lock().unwrap().read(&mut r_buf) {
+            match stream_lock.read(&mut r_buf) {
 
                 Ok(bytes_read) => {
 
@@ -245,10 +258,15 @@ impl UpStreamInner {
 
                     } else if bytes_read != 0 && bytes_read <= 1024 {
 
+                        /*
                         let mut tmp_buf = r_buf.to_vec();
                         tmp_buf.truncate(bytes_read);
+                        */
+                        
 
-                        let _bw = self.internal_data_buffer.write(&tmp_buf).unwrap();
+                        //let _bw = self.internal_data_buffer.write(&tmp_buf).unwrap();
+
+                        let _bw = self.internal_data_buffer.write(r_buf.split_at(bytes_read).0).unwrap();
                         data_length += bytes_read as i64;
 
                     } else {
@@ -262,6 +280,10 @@ impl UpStreamInner {
                             if data_length == 0 {
                                 data_length = -1;
                             }
+                            break;
+                        },
+                        io::ErrorKind::ConnectionReset => {
+                            data_length = -2;
                             break;
                         },
                         _ => {println!("[!!!] Got error: {}",e);}
