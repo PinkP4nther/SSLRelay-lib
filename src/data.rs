@@ -61,7 +61,7 @@ impl DownStreamInner {
                             drop(stream_lock);
 
                             if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamRead) {
-                                println!("[SSLRelay Error]: Failed to send DownStreamRead ready notifier to main thread: {}", e);
+                                println!("[SSLRelay DownStream Thread Error]: Failed to send DownStreamRead ready notifier to main thread: {}", e);
                                 return;
                             }
                         },
@@ -88,7 +88,7 @@ impl DownStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamWrite(self.internal_data_buffer.clone())) {
-                        println!("[SSLRelay Error]: Failed to send UpStreamWrite to main thread: {}", e);
+                        println!("[SSLRelay DownStream Thread Error]: Failed to send UpStreamWrite to main thread: {}", e);
                         return;
                     }
 
@@ -116,7 +116,7 @@ impl DownStreamInner {
                 } else if byte_count == 0 || byte_count == -2 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
-                        println!("[SSLRelay Error]: Failed to send shutdown signal to main thread from DownStream thread: {}", e);
+                        println!("[SSLRelay DownStream Thread Error]: Failed to send shutdown signal to main thread from DownStream thread: {}", e);
                         return;
                     }
                     let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
@@ -223,7 +223,7 @@ impl UpStreamInner {
                             drop(stream_lock);
 
                             if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamRead) {
-                                println!("[SSLRelay Error]: Failed to send UpStreamRead ready notifier to main thread: {}", e);
+                                println!("[SSLRelay UpStream Thread Error]: Failed to send UpStreamRead ready notifier to main thread: {}", e);
                                 return;
                             }
                         },
@@ -249,7 +249,7 @@ impl UpStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamWrite(self.internal_data_buffer.clone())) {
-                        println!("[SSLRelay Error]: Failed to send DownStreamWrite to main thread: {}", e);
+                        println!("[SSLRelay UpStream Thread Error]: Failed to send DownStreamWrite to main thread: {}", e);
                         return;
                     }
 
@@ -275,7 +275,7 @@ impl UpStreamInner {
                 } else if byte_count == 0 || byte_count == -2 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamShutDown) {
-                        println!("[SSLRelay Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
+                        println!("[SSLRelay UpStream Thread Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
                         return;
                     }
                     let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
