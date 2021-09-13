@@ -35,7 +35,7 @@ impl DownStreamInner {
 
         loop {
 
-            match data_in.recv_timeout(Duration::from_millis(100)) {
+            match data_in.recv_timeout(Duration::from_millis(50)) {
 
                 // DataPipe Received
                 Ok(data_received) => {
@@ -198,7 +198,7 @@ impl UpStreamInner {
 
         loop {
 
-            match data_in.recv_timeout(Duration::from_millis(100)) {
+            match data_in.recv_timeout(Duration::from_millis(50)) {
 
                 Ok(data_received) => {
 
@@ -361,7 +361,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
     pub fn new(ds_tcp_stream: SslStream<TcpStream>, remote_endpoint: String, handlers: InnerHandlers<H>) -> Self {
 
-        let _ = ds_tcp_stream.get_ref().set_read_timeout(Some(Duration::from_millis(100)));
+        let _ = ds_tcp_stream.get_ref().set_read_timeout(Some(Duration::from_millis(50)));
 
         FullDuplexTcp {
             ds_tcp_stream: Arc::new(Mutex::new(ds_tcp_stream)),
@@ -548,7 +548,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
             Mutex::new(
                 s
             )));
-        let _ = self.us_tcp_stream.as_ref().unwrap().lock().unwrap().get_ref().set_read_timeout(Some(Duration::from_millis(100)));
+        let _ = self.us_tcp_stream.as_ref().unwrap().lock().unwrap().get_ref().set_read_timeout(Some(Duration::from_millis(50)));
         return 0;
     }
 }
