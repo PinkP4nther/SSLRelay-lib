@@ -7,6 +7,6 @@ Then use this library to continuously rewrite or display decrypted network traff
 This library now supports continuous TCP sessions. | 09/02/2021\
 Fixed stream threads becoming locked when an abrupt shutdown of the TCP stream occurs. | 09/13/2021
 
-Fix race condition where streams coming from up/down stream at same time can cause desync of master and stream threads | TODO
+Race condition between UP/DOWN stream threads fixed. As well as major performance improvements! | 09/14/2021
 
 More updates/ideas to come.. I think..
