@@ -16,7 +16,7 @@ impl HandlerCallbacks for Handler {
     }
 
     // DownStream blocking callback
-    fn ds_b_callback(&self, _in_data: Vec<u8>) {
+    fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {
         _in_data.reverse();
         println!("[+] Data rewritten to:\n{:#04X?}", _in_data);
         CallbackRet::Relay(_in_data)
@@ -28,7 +28,7 @@ impl HandlerCallbacks for Handler {
     }
 
     // UpStream blocking callback
-    fn us_b_callback(&self, _in_data: Vec<u8>) {
+    fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {
         _in_data.reverse();
         println!("[+] Data rewritten to:\n{:#04X?}", _in_data);
         CallbackRet::Relay(_in_data)

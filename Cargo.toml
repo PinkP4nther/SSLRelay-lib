@@ -1,9 +1,9 @@
 [package]
 name = "sslrelay"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["PinkP4nther <pinkp4nther@protonmail.com>"]
 edition = "2018"
 
 [dependencies]
-openssl = "0.10.34"
+openssl = "0.10.36"
 toml = "0.5.8"
