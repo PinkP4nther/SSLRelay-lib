@@ -22,9 +22,9 @@ pub struct RelayConfig {
 }
 
 pub trait HandlerCallbacks {
-    fn ds_b_callback(&self, _in_data: &mut Vec<u8>){}
+    fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
     fn ds_nb_callback(&self, _in_data: Vec<u8>){}
-    fn us_b_callback(&self, _in_data: &mut Vec<u8>){}
+    fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
     fn us_nb_callback(&self, _in_data: Vec<u8>){}
 }
 
@@ -33,6 +33,14 @@ pub enum ConfigType<T> {
     Path(T),
     Conf(RelayConfig),
     Default,
+}
+
+#[derive(Debug)]
+pub enum CallbackRet {
+    Relay(Vec<u8>),// Relay data
+    Spoof(Vec<u8>),// Skip relaying and send data back
+    Shutdown,// Shutdown TCP connection
+    Freeze,// Dont send data (pretend as if stream never was recieved)
 }
 
 #[derive(Clone)]

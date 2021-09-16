@@ -1,4 +1,4 @@
-use sslrelay::{self, ConfigType, RelayConfig, HandlerCallbacks};
+use sslrelay::{self, ConfigType, RelayConfig, HandlerCallbacks, CallbackRet};
 
 // Handler object
 #[derive(Clone)] // Must have Clone trait implemented.
@@ -16,8 +16,9 @@ impl HandlerCallbacks for Handler {
     }
 
     // DownStream blocking callback
-    fn ds_b_callback(&self, _in_data: &mut Vec<u8>) {
+    fn ds_b_callback(&self, _in_data: Vec<u8>) {
         println!("[CALLBACK] Down Stream Blocking CallBack!");
+        CallbackRet::Relay(_in_data)
     }
 
     // UpStream non blocking callback
@@ -26,8 +27,9 @@ impl HandlerCallbacks for Handler {
     }
 
     // UpStream blocking callback
-    fn us_b_callback(&self, _in_data: &mut Vec<u8>) {
+    fn us_b_callback(&self, _in_data: Vec<u8>) {
         println!("[CALLBACK] Up Stream Blocking CallBack!");
+        CallbackRet::Relay(_in_data)
     }
 }
 

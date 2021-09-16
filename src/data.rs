@@ -6,7 +6,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::sync::{Arc, Mutex};
 
-use crate::{HandlerCallbacks, InnerHandlers};
+use crate::{HandlerCallbacks, CallbackRet, InnerHandlers};
 
 #[derive(Debug)]
 enum FullDuplexTcpState {
@@ -378,10 +378,15 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                     match state_request {
 
                         // DownStream Write Request
-                        FullDuplexTcpState::DownStreamWrite(mut data) => {
+                        FullDuplexTcpState::DownStreamWrite(data) => {
 
                             /*
                                 Callbacks that work with data from UpStream go here
+                                Add callback return types for blocking callback subroutines
+                                Shutdown - Shutdown TCP connection
+                                Relay - Relay TCP stream
+                                Spoof - Spoof back to received stream direction
+                                Freeze - Freeze data (dont relay and destroy data)
                             */
 
                             let inner_handlers_clone = self.inner_handlers.clone();
@@ -391,17 +396,40 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                 inner_handlers_clone.cb.us_nb_callback(in_data);
                             });
 
-                            self.inner_handlers.cb.us_b_callback(&mut data);
-                            match ds_data_pipe_sender.send(DataPipe::DataWrite(data)) {
-                                Ok(()) => {},
-                                Err(e) => {
-                                    println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                            match self.inner_handlers.cb.us_b_callback(data) {
+                                CallbackRet::Relay(retdata) => {
+                                    match ds_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
+                                        Ok(()) => {},
+                                        Err(e) => {
+                                            println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                                            return;
+                                        }
+                                    }
+                                },
+                                CallbackRet::Spoof(retdata) => {
+                                    match us_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
+                                        Ok(()) => {},
+                                        Err(e) => {
+                                            println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                                            return;
+                                        }
+                                    }
+                                },
+                                CallbackRet::Freeze => {},
+                                CallbackRet::Shutdown => {
+                                    if let Err(e) = us_data_pipe_sender.send(DataPipe::Shutdown) {
+                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to UpStream thread: {}", e);
+                                    }
+                                    if let Err(e) = ds_data_pipe_sender.send(DataPipe::Shutdown) {
+                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to DownStream thread: {}", e);
+                                    }
                                     return;
                                 }
                             }
+
                         },
                         // UpStream Write Request
-                        FullDuplexTcpState::UpStreamWrite(mut data) => {
+                        FullDuplexTcpState::UpStreamWrite(data) => {
 
                             /*
                                 Callbacks that work with data from DownStream go here
@@ -414,12 +442,34 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                 inner_handlers_clone.cb.ds_nb_callback(in_data);
                             });
 
-                            self.inner_handlers.cb.ds_b_callback(&mut data);
+                            match self.inner_handlers.cb.ds_b_callback(data) {
+                                CallbackRet::Relay(retdata) => {
+                                    match us_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
+                                        Ok(()) => {},
+                                        Err(e) => {
+                                            println!("[SSLRelay Error]: Failed to send data write to UpStream thread: {}", e);
+                                            return;
+                                        }
+                                    }
+                                },
+                                CallbackRet::Spoof(retdata) => {
+                                    match ds_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
+                                        Ok(()) => {},
+                                        Err(e) => {
+                                            println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                                            return;
+                                        }
+                                    }
+                                },
+                                CallbackRet::Freeze => {},
+                                CallbackRet::Shutdown => {
+                                    if let Err(e) = ds_data_pipe_sender.send(DataPipe::Shutdown) {
+                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to DownStream thread: {}", e);
 
-                            match us_data_pipe_sender.send(DataPipe::DataWrite(data)) {
-                                Ok(()) => {},
-                                Err(e) => {
-                                    println!("[SSLRelay Error]: Failed to send data write to UpStream thread: {}", e);
+                                    }
+                                    if let Err(e) = us_data_pipe_sender.send(DataPipe::Shutdown) {
+                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to UpStream thread: {}", e);
+                                    }
                                     return;
                                 }
                             }
