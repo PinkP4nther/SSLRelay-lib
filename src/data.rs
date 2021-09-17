@@ -28,6 +28,12 @@ struct DownStreamInner {
 }
 
 impl DownStreamInner {
+
+    fn handle_error(&self, error_description: &str) {
+        println!("[SSLRelay DownStream Thread Error]: {}", error_description);
+        let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+    }
+
     pub fn ds_handler(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
 
         loop {
@@ -43,12 +49,10 @@ impl DownStreamInner {
                             let mut stream_lock = match self.ds_stream.as_ref().unwrap().lock() {
                                 Ok(sl) => sl,
                                 Err(_e) => {
-                                    println!("[!] Failed to get stream lock!");
+                                    self.handle_error("Failed to get stream lock!");
                                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
-                                        println!("[SSLRelay DownStream Thread Error]: Failed to send shutdown signal to main thread from DownStream thread: {}", e);
-                                        return;
+                                        self.handle_error(format!("Failed to send shutdown signal to main thread from DownStream thread: {}", e).as_str());
                                     }
-                                    let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
                                     return;
                                 }
                             };
@@ -56,12 +60,11 @@ impl DownStreamInner {
                             match stream_lock.write_all(&data) {
                                 Ok(()) => {},
                                 Err(_e) => {
-                                    println!("[!] Failed to write data to DownStream tcp stream!");
+                                    self.handle_error("Failed to write data to DownStream tcp stream!");
                                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
-                                        println!("[SSLRelay DownStream Thread Error]: Failed to send shutdown signal to main thread from DownStream thread: {}", e);
-                                        return;
+                                        self.handle_error(format!("Failed to send shutdown signal to main thread from DownStream thread: {}", e).as_str());
                                     }
-                                    let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                                    return;
                                 }
                             }
                             let _ = stream_lock.flush();
@@ -78,7 +81,7 @@ impl DownStreamInner {
                     match _e {
                         mpsc::RecvTimeoutError::Timeout => {},
                         mpsc::RecvTimeoutError::Disconnected => {
-                            println!("[!] DownStream data_in channel is disconnected!");
+                            self.handle_error("DownStream data_in channel is disconnected!");
                             return;
                         }
                     }
@@ -90,7 +93,7 @@ impl DownStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamWrite(self.internal_data_buffer.clone())) {
-                        println!("[SSLRelay DownStream Thread Error]: Failed to send UpStreamWrite to main thread: {}", e);
+                        self.handle_error(format!("Failed to send UpStreamWrite to main thread: {}", e).as_str());
                         return;
                     }
 
@@ -99,11 +102,10 @@ impl DownStreamInner {
                 } else if byte_count == 0 || byte_count == -2 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
-                        println!("[SSLRelay DownStream Thread Error]: Failed to send shutdown signal to main thread from DownStream thread: {}", e);
-                        return;
+                        self.handle_error(format!("Failed to send shutdown signal to main thread from DownStream thread: {}", e).as_str());
                     }
-                    let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
                     return;
+
                 } else if byte_count == -1 {
                     continue;
                 }
@@ -177,6 +179,12 @@ struct UpStreamInner{
 }
 
 impl UpStreamInner {
+
+    fn handle_error(&self, error_description: &str) {
+        println!("[SSLRelay UpStream Thread Error]: {}", error_description);
+        let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+    }
+
     pub fn us_handler(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
 
         loop {
@@ -191,12 +199,11 @@ impl UpStreamInner {
                             let mut stream_lock = match self.us_stream.as_ref().unwrap().lock() {
                                 Ok(sl) => sl,
                                 Err(_e) => {
-                                    println!("[!] Failed to get stream lock!");
-                                    if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamShutDown) {
-                                        println!("[SSLRelay UpStream Thread Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
-                                        return;
+                                    self.handle_error("Failed to get stream lock!");
+                                    if let Err(_e) = data_out.send(FullDuplexTcpState::UpStreamShutDown) {
+                                        //println!("[SSLRelay UpStream Thread Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
+                                        //return;
                                     }
-                                    let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
                                     return;
                                 }
                             };
@@ -204,12 +211,12 @@ impl UpStreamInner {
                             match stream_lock.write_all(&data) {
                                 Ok(()) => {},
                                 Err(_e) => {
-                                    println!("[!] Failed to write data to UpStream tcp stream!");
-                                    if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamShutDown) {
-                                        println!("[SSLRelay UpStream Thread Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
-                                        return;
+                                    println!("Failed to write data to UpStream tcp stream!");
+                                    if let Err(_e) = data_out.send(FullDuplexTcpState::UpStreamShutDown) {
+                                        //println!("[SSLRelay UpStream Thread Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
+                                        //return;
                                     }
-                                    let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                                    return;
                                 }
                             }
                             let _ = stream_lock.flush();
@@ -226,7 +233,7 @@ impl UpStreamInner {
                     match e {
                         mpsc::RecvTimeoutError::Timeout => {},
                         mpsc::RecvTimeoutError::Disconnected => {
-                            println!("[!] UpStream data_in channel is disconnected!");
+                            self.handle_error("UpStream data_in channel is disconnected!");
                             return;
                         }
                     }
@@ -237,7 +244,7 @@ impl UpStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamWrite(self.internal_data_buffer.clone())) {
-                        println!("[SSLRelay UpStream Thread Error]: Failed to send DownStreamWrite to main thread: {}", e);
+                        self.handle_error(format!("Failed to send DownStreamWrite to main thread: {}", e).as_str());
                         return;
                     }
 
@@ -246,10 +253,8 @@ impl UpStreamInner {
                 } else if byte_count == 0 || byte_count == -2 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamShutDown) {
-                        println!("[SSLRelay UpStream Thread Error]: Failed to send shutdown signal to main thread from UpStream thread: {}", e);
-                        return;
+                        self.handle_error(format!("Failed to send shutdown signal to main thread from UpStream thread: {}", e).as_str());
                     }
-                    let _ = self.us_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
                     return;
                 } else if byte_count == -1 {
                     continue;

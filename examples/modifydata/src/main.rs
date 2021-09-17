@@ -1,4 +1,4 @@
-use sslrelay::{self, ConfigType, HandlerCallbacks};
+use sslrelay::{self, ConfigType, HandlerCallbacks, CallbackRet};
 
 // Handler object
 #[derive(Clone)] // Must have Clone trait implemented.
