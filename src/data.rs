@@ -351,7 +351,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
     pub fn handle(&mut self) {
 
-        if self.connect_endpoint() == -1 {
+        if self.connect_endpoint() < 0 {
             let _ = self.ds_tcp_stream.lock().unwrap().get_ref().shutdown(Shutdown::Both);
             return;
         }
@@ -406,7 +406,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                     match ds_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
                                         Ok(()) => {},
                                         Err(e) => {
-                                            println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                                            self.handle_error(format!("Failed to send data write to DownStream thread: {}", e).as_str());
                                             return;
                                         }
                                     }
@@ -415,7 +415,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                     match us_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
                                         Ok(()) => {},
                                         Err(e) => {
-                                            println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                                            self.handle_error(format!("Failed to send data write to DownStream thread: {}", e).as_str());
                                             return;
                                         }
                                     }
@@ -423,10 +423,10 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                 CallbackRet::Freeze => {},
                                 CallbackRet::Shutdown => {
                                     if let Err(e) = us_data_pipe_sender.send(DataPipe::Shutdown) {
-                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to UpStream thread: {}", e);
+                                        self.handle_error(format!("Failed to send Shutdown signal to UpStream thread: {}", e).as_str());
                                     }
                                     if let Err(e) = ds_data_pipe_sender.send(DataPipe::Shutdown) {
-                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to DownStream thread: {}", e);
+                                        self.handle_error(format!("Failed to send Shutdown signal to DownStream thread: {}", e).as_str());
                                     }
                                     return;
                                 }
@@ -452,7 +452,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                     match us_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
                                         Ok(()) => {},
                                         Err(e) => {
-                                            println!("[SSLRelay Error]: Failed to send data write to UpStream thread: {}", e);
+                                            self.handle_error(format!("Failed to send data write to UpStream thread: {}", e).as_str());
                                             return;
                                         }
                                     }
@@ -461,7 +461,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                     match ds_data_pipe_sender.send(DataPipe::DataWrite(retdata)) {
                                         Ok(()) => {},
                                         Err(e) => {
-                                            println!("[SSLRelay Error]: Failed to send data write to DownStream thread: {}", e);
+                                            self.handle_error(format!("Failed to send data write to DownStream thread: {}", e).as_str());
                                             return;
                                         }
                                     }
@@ -469,11 +469,10 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                 CallbackRet::Freeze => {},
                                 CallbackRet::Shutdown => {
                                     if let Err(e) = ds_data_pipe_sender.send(DataPipe::Shutdown) {
-                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to DownStream thread: {}", e);
-
+                                        self.handle_error(format!("Failed to send Shutdown signal to DownStream thread: {}", e).as_str());
                                     }
                                     if let Err(e) = us_data_pipe_sender.send(DataPipe::Shutdown) {
-                                        println!("[SSLRelay Error]: Failed to send Shutdown signal to UpStream thread: {}", e);
+                                        self.handle_error(format!("Failed to send Shutdown signal to UpStream thread: {}", e).as_str());
                                     }
                                     return;
                                 }
@@ -483,7 +482,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                         FullDuplexTcpState::DownStreamShutDown => {
 
                             if let Err(e) = us_data_pipe_sender.send(DataPipe::Shutdown) {
-                                println!("[SSLRelay Error]: Failed to send Shutdown signal to UpStream thread: {}", e);
+                                self.handle_error(format!("Failed to send Shutdown signal to UpStream thread: {}", e).as_str());
                                 return;
                             }
                             return;
@@ -492,7 +491,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                         FullDuplexTcpState::UpStreamShutDown => {
 
                             if let Err(e) = ds_data_pipe_sender.send(DataPipe::Shutdown) {
-                                println!("[SSLRelay Error]: Failed to send Shutdown signal to DownStream thread: {}", e);
+                                self.handle_error(format!("Failed to send Shutdown signal to DownStream thread: {}", e).as_str());
                                 return;
                             }
                             return;
@@ -500,10 +499,16 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                     }
                 },
                 Err(_e) => {
-                    println!("[!] State receiver communication channel has closed!");
+                    self.handle_error("State receiver communication channel has closed!");
+                    if let Err(e) = ds_data_pipe_sender.send(DataPipe::Shutdown) {
+                        self.handle_error(format!("Failed to send Shutdown signal to DownStream thread: {}", e).as_str());
+                    }
+                    if let Err(e) = us_data_pipe_sender.send(DataPipe::Shutdown) {
+                        self.handle_error(format!("Failed to send Shutdown signal to UpStream thread: {}", e).as_str());
+                    }
                     return;
                 }
-            }
+            }// State Receiver
         }
     }
     
@@ -517,21 +522,31 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
         let s = match TcpStream::connect(self.remote_endpoint.as_str()) {
             Ok(s) => s,
             Err(e) => {
-                println!("[!] Can't connect to remote host: {}\nErr: {}", self.remote_endpoint, e);
+                self.handle_error(format!("Can't connect to remote host: {}\nErr: {}", self.remote_endpoint, e).as_str());
                 return -1;
             }
         };
 
         let r_host: Vec<&str> = self.remote_endpoint.as_str().split(":").collect();
 
-        let s = connector.connect(r_host[0], s).unwrap();
+        let s = match connector.connect(r_host[0], s) {
+            Ok(s) => s,
+            Err(e) => {
+                self.handle_error(format!("Failed to accept TLS/SSL handshake: {}", e).as_str());
+                return -2;
+            }
+        };
 
         self.us_tcp_stream = Some(
             Arc::new(
-            Mutex::new(
-                s
-            )));
+                Mutex::new(
+                    s
+        )));
         let _ = self.us_tcp_stream.as_ref().unwrap().lock().unwrap().get_ref().set_read_timeout(Some(Duration::from_millis(50)));
         return 0;
+    }
+
+    fn handle_error(&self, error_description: &str) {
+        println!("[SSLRelay Master Thread Error]: {}", error_description);
     }
 }
