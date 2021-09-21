@@ -327,7 +327,9 @@ where
 {
     ds_tcp_stream: Arc<Mutex<SslStream<TcpStream>>>,
     us_tcp_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
-    remote_endpoint: String,
+    //remote_endpoint: String,
+    remote_host: String,
+    remote_port: String,
     ds_inner_m: Arc<Mutex<DownStreamInner>>,
     us_inner_m: Arc<Mutex<UpStreamInner>>,
     inner_handlers: InnerHandlers<H>,
@@ -335,14 +337,15 @@ where
 
 impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static> FullDuplexTcp<H> {
 
-    pub fn new(ds_tcp_stream: SslStream<TcpStream>, remote_endpoint: String, handlers: InnerHandlers<H>) -> Self {
+    pub fn new(ds_tcp_stream: SslStream<TcpStream>, remote_host: String, remote_port: String, handlers: InnerHandlers<H>) -> Self {
 
         let _ = ds_tcp_stream.get_ref().set_read_timeout(Some(Duration::from_millis(50)));
 
         FullDuplexTcp {
             ds_tcp_stream: Arc::new(Mutex::new(ds_tcp_stream)),
             us_tcp_stream: None,
-            remote_endpoint,
+            remote_host,
+            remote_port,
             ds_inner_m: Arc::new(Mutex::new(DownStreamInner{ds_stream: None, internal_data_buffer: Vec::<u8>::new()})),
             us_inner_m: Arc::new(Mutex::new(UpStreamInner{us_stream: None, internal_data_buffer: Vec::<u8>::new()})),
             inner_handlers: handlers,
@@ -519,17 +522,17 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
         let connector = sslbuilder.build();
 
-        let s = match TcpStream::connect(self.remote_endpoint.as_str()) {
+        let s = match TcpStream::connect(format!("{}:{}", self.remote_host, self.remote_port)) {
             Ok(s) => s,
             Err(e) => {
-                self.handle_error(format!("Can't connect to remote host: {}\nErr: {}", self.remote_endpoint, e).as_str());
+                self.handle_error(format!("Can't connect to remote host: {}\nErr: {}", format!("{}:{}", self.remote_host, self.remote_port), e).as_str());
                 return -1;
             }
         };
 
-        let r_host: Vec<&str> = self.remote_endpoint.as_str().split(":").collect();
+        //let r_host: Vec<&str> = self.remote_endpoint.as_str().split(":").collect();
 
-        let s = match connector.connect(r_host[0], s) {
+        let s = match connector.connect(self.remote_host.as_str(), s) {
             Ok(s) => s,
             Err(e) => {
                 self.handle_error(format!("Failed to accept TLS/SSL handshake: {}", e).as_str());

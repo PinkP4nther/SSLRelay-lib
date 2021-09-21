@@ -80,7 +80,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
         let rhost = rc_pointer.lock().unwrap().remote_host.clone();
         let rport = rc_pointer.lock().unwrap().remote_port.clone();
-        let remote_endpoint = format!("{}:{}", rhost, rport);
+        //let remote_endpoint = format!("{}:{}", rhost, rport);
 
         let acceptor = self.setup_ssl_config(self.config.as_ref().unwrap().ssl_private_key_path.clone(), self.config.as_ref().unwrap().ssl_cert_path.clone());
         let listener = TcpListener::bind(format!("{}:{}", self.config.as_ref().unwrap().bind_host.clone(), self.config.as_ref().unwrap().bind_port.clone())).unwrap();
@@ -93,14 +93,17 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                     let acceptor = acceptor.clone();
                     //let rc_config = rc_pointer.clone();
                     let handler_clone = self.handlers.as_ref().unwrap().clone();
-                    let r_endpoint = remote_endpoint.clone();
+                    //let r_endpoint = remote_endpoint.clone();
+
+                    let r_host = rhost.clone();
+                    let r_port = rport.clone();
 
                     thread::spawn(move || {
 
                         match acceptor.accept(stream) {
                             Ok(stream) => {
                                 // FULL DUPLEX OBJECT CREATION HERE
-                                FullDuplexTcp::new(stream, r_endpoint, handler_clone).handle();
+                                FullDuplexTcp::new(stream, r_host, r_port, handler_clone).handle();
                             },
                             Err(e) => {
 
