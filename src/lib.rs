@@ -1,6 +1,6 @@
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 use std::net::{TcpListener};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{process, thread};
 use std::env;
 use std::fs;
@@ -48,7 +48,7 @@ pub struct SSLRelay<H>
 where
     H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static,
 {
-    config: Option<RelayConfig>,
+    config: RelayConfig,
     handlers: Option<InnerHandlers<H>>,
 }
 
@@ -62,28 +62,40 @@ where
 
 impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static> SSLRelay<H> {
 
-    pub fn new(handlers: H) -> Self {
+    pub fn new(handlers: H, config_path: ConfigType<String>) -> Self {
 
         SSLRelay {
-            config: None,
+            config: Self::load_relay_config(config_path),
             handlers: Some(InnerHandlers{cb: handlers}),
         }
     }
 
-    pub fn load_config(&mut self, config_path: ConfigType<String>) {
-        self.config = Some(self.load_relay_config(config_path));
-    }
-
     pub fn start(&mut self) {
 
-        let rc_pointer = Arc::new(Mutex::new(self.config.as_ref().unwrap().clone()));
+        /* For UpStream and DownStream TCP data type separation. It should probably start here.
+         * start() will setup anything that needs to be setup before starting the listener.
+         * Once everything is initialized it will then call another handle function that is
+         * decided based upon the DS/US options.
+         * Basically this method is decided from down stream options
+         * If DS is set to RAW mode then it will call the RAW TCP data mode handler vice versa.
+         * The stream type will be wrapped in a mode type.
+         * DataStreamType::TLS(SslStream<TcpStream>) or DataStreamType::RAW(TcpStream)
+         * This will be passed into the Full Duplex TCP simulator object and those
+         * methods within will decide which handler is called for each specific stream.
+         * WILL ONLY DECIDE HANDLER IF CANT DO GENERIC DATA TYPING WITH TRAITS
+         * The remote / UpStream data type will be decided by another DataStreamType variant and passed separately
+         * into the Full Duplex TCP simulator.
 
-        let rhost = rc_pointer.lock().unwrap().remote_host.clone();
-        let rport = rc_pointer.lock().unwrap().remote_port.clone();
+         * Maybe streams passed into FDTCP simulator object could be typed as Trait requirements instead of a strict type?
+         * Like Write/Read etc.
+        */
+
+        let rhost = self.config.remote_host.clone();
+        let rport = self.config.remote_port.clone();
         let remote_endpoint = format!("{}:{}", rhost, rport);
 
-        let acceptor = self.setup_ssl_config(self.config.as_ref().unwrap().ssl_private_key_path.clone(), self.config.as_ref().unwrap().ssl_cert_path.clone());
-        let listener = TcpListener::bind(format!("{}:{}", self.config.as_ref().unwrap().bind_host.clone(), self.config.as_ref().unwrap().bind_port.clone())).unwrap();
+        let acceptor = self.setup_ssl_config(self.config.ssl_private_key_path.clone(), self.config.ssl_cert_path.clone());
+        let listener = TcpListener::bind(format!("{}:{}", self.config.bind_host.clone(), self.config.bind_port.clone())).unwrap();
 
         for stream in listener.incoming() {
 
@@ -91,16 +103,18 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                 Ok(stream) => {
 
                     let acceptor = acceptor.clone();
-                    //let rc_config = rc_pointer.clone();
                     let handler_clone = self.handlers.as_ref().unwrap().clone();
                     let r_endpoint = remote_endpoint.clone();
+
+                    let r_host = rhost.clone();
+                    let r_port = rport.clone();
 
                     thread::spawn(move || {
 
                         match acceptor.accept(stream) {
                             Ok(stream) => {
                                 // FULL DUPLEX OBJECT CREATION HERE
-                                FullDuplexTcp::new(stream, r_endpoint, handler_clone).handle();
+                                FullDuplexTcp::new(stream, r_host, r_port, handler_clone).handle();
                             },
                             Err(e) => {
 
@@ -114,7 +128,7 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
         }
     }
 
-    fn load_relay_config(&self, config_path: ConfigType<String>) -> RelayConfig {
+    fn load_relay_config(config_path: ConfigType<String>) -> RelayConfig {
 
         let mut resolved_path = String::from("./relay_config.toml");
         match config_path {

@@ -1,5 +1,5 @@
 use std::time::Duration;
-use openssl::ssl::{SslConnector, SslMethod, SslStream, SslVerifyMode};
+use openssl::ssl::{Ssl, SslConnector, SslMethod, SslStream, SslVerifyMode};
 use std::io::{self, Read, Write};
 use std::net::{TcpStream, Shutdown};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -22,8 +22,37 @@ enum DataPipe {
     Shutdown,
 }
 
-struct DownStreamInner {
-    ds_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
+/*
+trait DataStream {}
+impl<S: Read + Write> DataStream for S {} 
+*/
+enum DataStreamType {
+    RAW(TcpStream),
+    TLS(SslStream<TcpStream>),
+}
+
+//impl Read for DataStreamType {}
+//impl Write for DataStreamType {}
+/*
+impl DataStreamType {
+    fn shutdown(&self) {
+        match self {
+            &Self::RAW(r) => {
+                r.shutdown(Shutdown::Both);
+                return;
+            },
+            &Self::TLS(t) => {
+                t.shutdown();
+                return;
+            },
+        }
+    }
+}
+*/
+struct DownStreamInner
+{
+    //ds_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
+    ds_stream: Option<Arc<Mutex<DataStreamType>>>,
     internal_data_buffer: Vec<u8>,
 }
 
@@ -31,10 +60,96 @@ impl DownStreamInner {
 
     fn handle_error(&self, error_description: &str) {
         println!("[SSLRelay DownStream Thread Error]: {}", error_description);
-        let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+        self.ds_stream.as_ref().unwrap().lock().unwrap().shutdown();
     }
 
     pub fn ds_handler(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
+
+
+
+    }
+
+    fn handle_raw(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
+        loop {
+
+            match data_in.recv_timeout(Duration::from_millis(50)) {
+
+                // DataPipe Received
+                Ok(data_received) => {
+
+                    match data_received {
+                        DataPipe::DataWrite(data) => {
+
+                            let mut stream_lock = match self.ds_stream.as_ref().unwrap().lock() {
+                                Ok(sl) => sl,
+                                Err(_e) => {
+                                    self.handle_error("Failed to get stream lock!");
+                                    if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
+                                        self.handle_error(format!("Failed to send shutdown signal to main thread from DownStream thread: {}", e).as_str());
+                                    }
+                                    return;
+                                }
+                            };
+
+                            match stream_lock.write_all(&data) {
+                                Ok(()) => {},
+                                Err(_e) => {
+                                    self.handle_error("Failed to write data to DownStream tcp stream!");
+                                    if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
+                                        self.handle_error(format!("Failed to send shutdown signal to main thread from DownStream thread: {}", e).as_str());
+                                    }
+                                    return;
+                                }
+                            }
+                            let _ = stream_lock.flush();
+                            drop(stream_lock);
+
+                        },
+                        DataPipe::Shutdown => {
+                            self.ds_stream.as_ref().unwrap().lock().unwrap().shutdown();
+                            return;
+                        },
+                    }
+                },
+                Err(_e) => {
+                    match _e {
+                        mpsc::RecvTimeoutError::Timeout => {},
+                        mpsc::RecvTimeoutError::Disconnected => {
+                            self.handle_error("DownStream data_in channel is disconnected!");
+                            return;
+                        }
+                    }
+                }
+            }// End of data_in receive
+
+            // If received data
+            if let Some(byte_count) = self.get_data_stream() {
+                if byte_count > 0 {
+
+                    if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamWrite(self.internal_data_buffer.clone())) {
+                        self.handle_error(format!("Failed to send UpStreamWrite to main thread: {}", e).as_str());
+                        return;
+                    }
+
+                    self.internal_data_buffer.clear();
+
+                } else if byte_count == 0 || byte_count == -2 {
+
+                    if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamShutDown) {
+                        self.handle_error(format!("Failed to send shutdown signal to main thread from DownStream thread: {}", e).as_str());
+                    }
+                    return;
+
+                } else if byte_count == -1 {
+                    continue;
+                }
+            } else {
+
+            }
+        }
+    }
+
+    fn handle_tls(&mut self, data_out: Sender<FullDuplexTcpState>, data_in: Receiver<DataPipe>) {
 
         loop {
 
@@ -72,7 +187,7 @@ impl DownStreamInner {
 
                         },
                         DataPipe::Shutdown => {
-                            let _ = self.ds_stream.as_ref().unwrap().lock().unwrap().get_ref().shutdown(Shutdown::Both);
+                            self.ds_stream.as_ref().unwrap().lock().unwrap().shutdown();
                             return;
                         },
                     }
@@ -173,8 +288,9 @@ impl DownStreamInner {
     }
 }
 
-struct UpStreamInner{
-    us_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
+struct UpStreamInner
+{
+    us_stream: Option<Arc<Mutex<DataStreamType>>>,
     internal_data_buffer: Vec<u8>
 }
 
@@ -325,9 +441,11 @@ pub struct FullDuplexTcp<H>
 where
     H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static,
 {
-    ds_tcp_stream: Arc<Mutex<SslStream<TcpStream>>>,
-    us_tcp_stream: Option<Arc<Mutex<SslStream<TcpStream>>>>,
-    remote_endpoint: String,
+    ds_tcp_stream: Arc<Mutex<DataStreamType>>,
+    us_tcp_stream: Option<Arc<Mutex<DataStreamType>>>,
+    //remote_endpoint: String,
+    remote_host: String,
+    remote_port: String,
     ds_inner_m: Arc<Mutex<DownStreamInner>>,
     us_inner_m: Arc<Mutex<UpStreamInner>>,
     inner_handlers: InnerHandlers<H>,
@@ -335,14 +453,15 @@ where
 
 impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static> FullDuplexTcp<H> {
 
-    pub fn new(ds_tcp_stream: SslStream<TcpStream>, remote_endpoint: String, handlers: InnerHandlers<H>) -> Self {
+    pub fn new(ds_tcp_stream: SslStream<TcpStream>, remote_host: String, remote_port: String, handlers: InnerHandlers<H>) -> Self {
 
         let _ = ds_tcp_stream.get_ref().set_read_timeout(Some(Duration::from_millis(50)));
 
         FullDuplexTcp {
             ds_tcp_stream: Arc::new(Mutex::new(ds_tcp_stream)),
             us_tcp_stream: None,
-            remote_endpoint,
+            remote_host,
+            remote_port,
             ds_inner_m: Arc::new(Mutex::new(DownStreamInner{ds_stream: None, internal_data_buffer: Vec::<u8>::new()})),
             us_inner_m: Arc::new(Mutex::new(UpStreamInner{us_stream: None, internal_data_buffer: Vec::<u8>::new()})),
             inner_handlers: handlers,
@@ -519,17 +638,15 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
         let connector = sslbuilder.build();
 
-        let s = match TcpStream::connect(self.remote_endpoint.as_str()) {
+        let s = match TcpStream::connect(format!("{}:{}", self.remote_host, self.remote_port)) {
             Ok(s) => s,
             Err(e) => {
-                self.handle_error(format!("Can't connect to remote host: {}\nErr: {}", self.remote_endpoint, e).as_str());
+                self.handle_error(format!("Can't connect to remote host: {}\nErr: {}", format!("{}:{}", self.remote_host, self.remote_port), e).as_str());
                 return -1;
             }
         };
 
-        let r_host: Vec<&str> = self.remote_endpoint.as_str().split(":").collect();
-
-        let s = match connector.connect(r_host[0], s) {
+        let s = match connector.connect(self.remote_host.as_str(), s) {
             Ok(s) => s,
             Err(e) => {
                 self.handle_error(format!("Failed to accept TLS/SSL handshake: {}", e).as_str());
