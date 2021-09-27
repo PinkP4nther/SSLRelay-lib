@@ -104,7 +104,10 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
                     let acceptor = acceptor.clone();
                     let handler_clone = self.handlers.as_ref().unwrap().clone();
-                    let r_endpoint = remote_endpoint.clone();
+                    //let r_endpoint = remote_endpoint.clone();
+
+                    let r_host = rhost.clone();
+                    let r_port = rport.clone();
 
                     let r_host = rhost.clone();
                     let r_port = rport.clone();

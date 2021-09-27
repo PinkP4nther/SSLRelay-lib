@@ -14,4 +14,6 @@ Then use this library to continuously rewrite or display decrypted network traff
 
 09/16/2021 | Version 0.3
 
+09/21/2021 | v0.3.1 | Fully supports IPv6.
+
 More updates/ideas to come.. I think..
