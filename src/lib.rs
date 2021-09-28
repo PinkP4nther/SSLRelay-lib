@@ -80,27 +80,8 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
     pub fn start(&mut self) {
 
-        /* For UpStream and DownStream TCP data type separation. It should probably start here.
-         * start() will setup anything that needs to be setup before starting the listener.
-         * Once everything is initialized it will then call another handle function that is
-         * decided based upon the DS/US options.
-         * Basically this method is decided from down stream options
-         * If DS is set to RAW mode then it will call the RAW TCP data mode handler vice versa.
-         * The stream type will be wrapped in a mode type.
-         * DataStreamType::TLS(SslStream<TcpStream>) or DataStreamType::RAW(TcpStream)
-         * This will be passed into the Full Duplex TCP simulator object and those
-         * methods within will decide which handler is called for each specific stream.
-         * WILL ONLY DECIDE HANDLER IF CANT DO GENERIC DATA TYPING WITH TRAITS
-         * The remote / UpStream data type will be decided by another DataStreamType variant and passed separately
-         * into the Full Duplex TCP simulator.
-
-         * Maybe streams passed into FDTCP simulator object could be typed as Trait requirements instead of a strict type?
-         * Like Write/Read etc.
-        */
-
         let rhost = self.config.remote_host.clone();
         let rport = self.config.remote_port.clone();
-        //let remote_endpoint = format!("{}:{}", rhost, rport);
         let listener = TcpListener::bind(format!("{}:{}", self.config.bind_host.clone(), self.config.bind_port.clone())).unwrap();
         let upstream_data_stream_type = self.config.upstream_data_type;
 
