@@ -9,10 +9,18 @@ use std::path::Path;
 use toml::Value as TValue;
 
 mod data;
-use data::FullDuplexTcp;
+use data::{FullDuplexTcp, DataStreamType};
+
+#[derive(Copy, Clone)]
+pub enum TCPDataType {
+    TLS,
+    RAW,
+}
 
 #[derive(Clone)]
 pub struct RelayConfig {
+    pub downstream_data_type: TCPDataType,
+    pub upstream_data_type: TCPDataType,
     pub bind_host: String,
     pub bind_port: String,
     pub remote_host: String,
@@ -92,41 +100,73 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
 
         let rhost = self.config.remote_host.clone();
         let rport = self.config.remote_port.clone();
-        let remote_endpoint = format!("{}:{}", rhost, rport);
-
-        let acceptor = self.setup_ssl_config(self.config.ssl_private_key_path.clone(), self.config.ssl_cert_path.clone());
+        //let remote_endpoint = format!("{}:{}", rhost, rport);
         let listener = TcpListener::bind(format!("{}:{}", self.config.bind_host.clone(), self.config.bind_port.clone())).unwrap();
+        let upstream_data_stream_type = self.config.upstream_data_type;
 
-        for stream in listener.incoming() {
+        match self.config.downstream_data_type {
 
-            match stream {
-                Ok(stream) => {
+            TCPDataType::TLS => {
+                let acceptor = self.setup_ssl_config(self.config.ssl_private_key_path.clone(), self.config.ssl_cert_path.clone());
 
-                    let acceptor = acceptor.clone();
-                    let handler_clone = self.handlers.as_ref().unwrap().clone();
-                    //let r_endpoint = remote_endpoint.clone();
+                for stream in listener.incoming() {
+        
+                    match stream {
+                        Ok(stream) => {
+        
+                            let acceptor = acceptor.clone();
+                            let handler_clone = self.handlers.as_ref().unwrap().clone();
+        
+                            let r_host = rhost.clone();
+                            let r_port = rport.clone();
+        
+                            thread::spawn(move || {
+        
+                                match acceptor.accept(stream) {
+                                    Ok(stream) => {
+                                        // FULL DUPLEX OBJECT CREATION HERE
+                                       match FullDuplexTcp::new(DataStreamType::TLS(stream), upstream_data_stream_type, r_host, r_port, handler_clone) {
+                                           Ok(mut fdtcp) => fdtcp.handle(),
+                                           Err(_ec) => {}
+                                       }
+                                    },
+                                    Err(e) => {
+        
+                                        println!("[Error] {}", e);
+                                    }
+                                }
+                            });
+                        },
+                        Err(e) => {println!("[Error] Tcp Connection Failed: {}", e)}
+                    }
+                }
+            },
 
-                    let r_host = rhost.clone();
-                    let r_port = rport.clone();
+            TCPDataType::RAW => {
 
-                    let r_host = rhost.clone();
-                    let r_port = rport.clone();
-
-                    thread::spawn(move || {
-
-                        match acceptor.accept(stream) {
-                            Ok(stream) => {
+                for stream in listener.incoming() {
+        
+                    match stream {
+                        Ok(stream) => {
+        
+                            let handler_clone = self.handlers.as_ref().unwrap().clone();
+        
+                            let r_host = rhost.clone();
+                            let r_port = rport.clone();
+        
+                            thread::spawn(move || {
+    
                                 // FULL DUPLEX OBJECT CREATION HERE
-                                FullDuplexTcp::new(stream, r_host, r_port, handler_clone).handle();
-                            },
-                            Err(e) => {
+                                match FullDuplexTcp::new(DataStreamType::RAW(stream), upstream_data_stream_type, r_host, r_port, handler_clone) {
+                                    Ok(mut fdtcp) => fdtcp.handle(),
+                                    Err(_ec) => {},
+                                }
 
-                                println!("[Error] {}", e);
-                            }
-                        }
-                    });
-                },
-                Err(e) => {println!("[Error] Tcp Connection Failed: {}", e)}
+                            });
+                        },
+                        Err(e) => {println!("[Error] Tcp Connection Failed: {}", e)}
+                    }
+                }
             }
         }
     }
@@ -163,8 +203,33 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
         let ssl_cert_path = config_parsed["ssl_cert_path"].to_string().replace("\"", "");
         let remote_host = config_parsed["remote_host"].to_string().replace("\"", "");
         let remote_port = config_parsed["remote_port"].to_string().replace("\"", "");
+        let upstream_tls_conf = config_parsed["upstream_data_type"].to_string().replace("\"", "").to_lowercase();
+        let downstream_tls_conf = config_parsed["downstream_data_type"].to_string().replace("\"", "").to_lowercase();
+
+        let upstream_data_type: TCPDataType;
+        let downstream_data_type: TCPDataType;
+
+        if upstream_tls_conf == "tls" {
+            upstream_data_type = TCPDataType::TLS;
+        } else if upstream_tls_conf == "raw" {
+            upstream_data_type = TCPDataType::RAW;
+        } else {
+            println!("[SSLRelay Error] Unrecognized TCPDataType for upstream_data_type. Data type received was not 'tcp' or 'tls'!");
+            process::exit(1); // Create error handling for load_relay_config()
+        }
+
+        if downstream_tls_conf == "tls" {
+            downstream_data_type = TCPDataType::TLS;
+        } else if downstream_tls_conf == "raw" {
+            downstream_data_type = TCPDataType::RAW;
+        } else {
+            println!("[SSLRelay Error] Unrecognized TCPDataType for downstream_data_type. Data type received was not 'tcp' or 'tls'!");
+            process::exit(1); // Create error handling for load_relay_config()
+        }
 
         RelayConfig {
+            upstream_data_type,
+            downstream_data_type,
             bind_host: bind_host.clone(),
             bind_port: bind_port.clone(),
             ssl_private_key_path: ssl_private_key_path.clone(),

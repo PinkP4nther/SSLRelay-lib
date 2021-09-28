@@ -1,6 +1,6 @@
 [package]
 name = "sslrelay"
-version = "0.3.1"
+version = "0.4.0"
 authors = ["PinkP4nther <pinkp4nther@protonmail.com>"]
 edition = "2018"
 

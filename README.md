@@ -16,4 +16,6 @@ Then use this library to continuously rewrite or display decrypted network traff
 
 09/21/2021 | v0.3.1 | Fully supports IPv6.
 
+09/28/2021 | v0.4.0 | New feature added: Stream data types. Can now set type of stream data TLS or RAW. And some performance improvements.
+
 More updates/ideas to come.. I think..

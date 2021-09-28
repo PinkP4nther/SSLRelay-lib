@@ -38,10 +38,7 @@ impl HandlerCallbacks for Handler {
 fn main() {
 
     // Create new SSLRelay object
-    let mut relay = sslrelay::SSLRelay::new(Handler);
-
-    // Load Configuration
-    relay.load_config(ConfigType::Default);
+    let mut relay = sslrelay::SSLRelay::new(Handler, ConfigType::Default);
 
     // Start listening
     relay.start();
