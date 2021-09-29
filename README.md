@@ -18,4 +18,6 @@ Then use this library to continuously rewrite or display decrypted network traff
 
 09/28/2021 | v0.4.0 | New feature added: Stream data types. Can now set type of stream data TLS or RAW. And some performance improvements.
 
+09/28/2021 | v0.4.1 | Code restructured and organized.
+
 More updates/ideas to come.. I think..
