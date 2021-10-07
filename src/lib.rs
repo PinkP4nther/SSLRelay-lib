@@ -5,9 +5,9 @@
 //! These callbacks can R/W the data from a stream(Blocking) or only R the data(Non-Blocking).
 //!```
 //!pub trait HandlerCallbacks {
-//!    fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
+//!    fn ds_b_callback(&mut self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
 //!    fn ds_nb_callback(&self, _in_data: Vec<u8>){}
-//!    fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
+//!    fn us_b_callback(&mut self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
 //!    fn us_nb_callback(&self, _in_data: Vec<u8>){}
 //!}
 //!```
@@ -41,7 +41,7 @@
 //!     }
 //! 
 //!     // DownStream blocking callback (Read & Write)
-//!     fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {
+//!     fn ds_b_callback(&mut self, _in_data: Vec<u8>) -> CallbackRet {
 //!         println!("[CALLBACK] Down Stream Blocking CallBack!");
 //!         CallbackRet::Relay(_in_data)
 //!     }
@@ -52,7 +52,7 @@
 //!     }
 //! 
 //!     // UpStream blocking callback (Read & Write)
-//!     fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {
+//!     fn us_b_callback(&mut self, _in_data: Vec<u8>) -> CallbackRet {
 //!         println!("[CALLBACK] Up Stream Blocking CallBack!");
 //!         CallbackRet::Relay(_in_data)
 //!     }
