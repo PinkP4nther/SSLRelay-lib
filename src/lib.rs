@@ -1,5 +1,3 @@
-#![warn(missing_docs)]
-
 //! ## SSLRelay
 
 //! Library for relaying TCP traffic as well as TLS encrypted TCP traffic.
