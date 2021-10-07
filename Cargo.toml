@@ -1,9 +1,15 @@
 [package]
 name = "sslrelay"
-version = "0.4.1"
-authors = ["PinkP4nther <pinkp4nther@protonmail.com>"]
+version = "0.4.2"
+authors = ["PinkP4nther <pinkp4nther@protonmail.com> @Pink_P4nther"]
 edition = "2018"
+description = ""
+repository = "https://github.com/PinkP4nther/SSLRelay-lib"
+keywords = ["tcp", "networking", "relay", "tls", "ssl"]
+categories = ["reverse-engineering", "network-relay", "tcp"]
 
-[dependencies]
-openssl = "0.10.36"
-toml = "0.5.8"
+[dependencies.openssl]
+version = "0.10.36"
+
+[dependencies.toml]
+version = "0.5.8"

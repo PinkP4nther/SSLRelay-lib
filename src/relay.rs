@@ -1,3 +1,5 @@
+//! SSLRelay
+
 use crate::{
     SSLRelay,
     HandlerCallbacks,
@@ -21,15 +23,15 @@ use crate::{
 };
 
 impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'static> SSLRelay<H> {
-
-    pub fn new(handlers: H, config_path: ConfigType<String>) -> Self {
+    /// Creates new SSLRelay instance.
+    pub fn new(handlers: H, config: ConfigType<String>) -> Self {
 
         SSLRelay {
-            config: Self::load_relay_config(config_path),
+            config: Self::load_relay_config(config),
             handlers: Some(InnerHandlers{cb: handlers}),
         }
     }
-
+    /// Starts the SSLRelay connection handling.
     pub fn start(&mut self) {
 
         let rhost = self.config.remote_host.clone();
@@ -104,10 +106,10 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
         }
     }
 
-    fn load_relay_config(config_path: ConfigType<String>) -> RelayConfig {
+    fn load_relay_config(config: ConfigType<String>) -> RelayConfig {
 
         let mut resolved_path = String::from("./relay_config.toml");
-        match config_path {
+        match config {
             ConfigType::Path(path) => {
                 resolved_path = path.clone();
             },

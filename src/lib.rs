@@ -1,3 +1,86 @@
+#![warn(missing_docs)]
+
+//! ## SSLRelay
+
+//! Library for relaying TCP traffic as well as TLS encrypted TCP traffic.
+//! This Library allows you to implement callback functions for upstream and downstream traffic.
+//! These callbacks can R/W the data from a stream(Blocking) or only R the data(Non-Blocking).
+//!```
+//!pub trait HandlerCallbacks {
+//!    fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
+//!    fn ds_nb_callback(&self, _in_data: Vec<u8>){}
+//!    fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
+//!    fn us_nb_callback(&self, _in_data: Vec<u8>){}
+//!}
+//!```
+//! The blocking callbacks return an enum called CallbackRet with four different variants.
+//! The variants control the flow of the tcp stream.
+//!```
+//! pub enum CallbackRet {
+//!     Relay(Vec<u8>),// Relay data
+//!     Spoof(Vec<u8>),// Skip relaying and send data back
+//!     Shutdown,// Shutdown TCP connection
+//!     Freeze,// Dont send data (pretend as if stream never was recieved)
+//! }
+//! ```
+//! ## Example (basic.rs)
+//! ```
+//! use sslrelay::{self, ConfigType, RelayConfig, HandlerCallbacks, CallbackRet, TCPDataType};
+//! 
+//! // Handler object
+//! #[derive(Clone)] // Must have Clone trait implemented.
+//! struct Handler;
+//! 
+//! /*
+//!     Callback traits that can be used to read or inject data
+//!     into data upstream or downstream.
+//! */
+//! impl HandlerCallbacks for Handler {
+//! 
+//!     // DownStream non blocking callback (Read Only)
+//!     fn ds_nb_callback(&self, _in_data: Vec<u8>) {
+//!         println!("[CALLBACK] Down Stream Non Blocking CallBack!");
+//!     }
+//! 
+//!     // DownStream blocking callback (Read & Write)
+//!     fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {
+//!         println!("[CALLBACK] Down Stream Blocking CallBack!");
+//!         CallbackRet::Relay(_in_data)
+//!     }
+//! 
+//!     // UpStream non blocking callback (Read Only)
+//!     fn us_nb_callback(&self, _in_data: Vec<u8>) {
+//!         println!("[CALLBACK] Up Stream Non Blocking CallBack!");
+//!     }
+//! 
+//!     // UpStream blocking callback (Read & Write)
+//!     fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {
+//!         println!("[CALLBACK] Up Stream Blocking CallBack!");
+//!         CallbackRet::Relay(_in_data)
+//!     }
+//! }
+//! 
+//! fn main() {
+//! 
+//!     // Create new SSLRelay object
+//!     let mut relay = sslrelay::SSLRelay::new(
+//!         Handler, 
+//!         ConfigType::Conf(RelayConfig {
+//!             downstream_data_type: TCPDataType::TLS,
+//!             upstream_data_type: TCPDataType::TLS,
+//!             bind_host: "0.0.0.0".to_string(),
+//!             bind_port: "443".to_string(),
+//!             remote_host: "remote.com".to_string(),
+//!             remote_port: "443".to_string(),
+//!             ssl_private_key_path: "./remote.com.key".to_string(),
+//!             ssl_cert_path: "./remote.com.crt".to_string(),
+//!         })
+//!     );
+//!     // Start listening
+//!     relay.start();
+//! }
+//! ```
+
 use openssl::ssl::{
     SslVerifyMode,
     SslConnector,
@@ -67,12 +150,18 @@ enum DataStreamType {
     TLS(SslStream<TcpStream>),
 }
 
+/// Specifies the upstream or downstream data type (TLS or RAW).
 #[derive(Copy, Clone)]
 pub enum TCPDataType {
     TLS,
     RAW,
 }
 
+/// The relay configuration type.
+/// Env: Uses the SSLRELAY_CONFIG environmental variable for the path to the config file.
+/// Path: Specifies the path to the config file.
+/// Conf: For passing an instance of the object instead of using a config file.
+/// Default: Uses ./relay_config.toml config file.
 pub enum ConfigType<T> {
     Env,
     Path(T),
@@ -80,6 +169,7 @@ pub enum ConfigType<T> {
     Default,
 }
 
+/// Relay Config structure for passing into the SSLRelay::new() config parameter.
 #[derive(Clone)]
 pub struct RelayConfig {
     pub downstream_data_type: TCPDataType,
@@ -92,6 +182,7 @@ pub struct RelayConfig {
     pub ssl_cert_path: String,
 }
 
+/// CallbackRet for blocking callback functions
 #[derive(Debug)]
 pub enum CallbackRet {
     Relay(Vec<u8>),// Relay data
@@ -100,6 +191,7 @@ pub enum CallbackRet {
     Freeze,// Dont send data (pretend as if stream never was recieved)
 }
 
+/// Callback functions a user may or may not implement.
 pub trait HandlerCallbacks {
     fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
     fn ds_nb_callback(&self, _in_data: Vec<u8>){}
@@ -107,7 +199,7 @@ pub trait HandlerCallbacks {
     fn us_nb_callback(&self, _in_data: Vec<u8>){}
 }
 
-
+/// The main SSLRelay object.
 #[derive(Clone)]
 pub struct SSLRelay<H>
 where

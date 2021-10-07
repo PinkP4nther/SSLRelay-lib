@@ -20,4 +20,6 @@ Then use this library to continuously rewrite or display decrypted network traff
 
 09/28/2021 | v0.4.1 | Code restructured and organized.
 
+10/06/2021 | v0.4.2 | Added documentation.
+
 More updates/ideas to come.. I think..
