@@ -7,6 +7,7 @@ description = ""
 repository = "https://github.com/PinkP4nther/SSLRelay-lib"
 keywords = ["tcp", "networking", "relay", "tls", "ssl"]
 categories = ["reverse-engineering", "network-relay", "tcp"]
+license = "Apache-2.0"
 
 [dependencies.openssl]
 version = "0.10.36"
