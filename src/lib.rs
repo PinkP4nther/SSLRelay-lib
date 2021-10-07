@@ -191,9 +191,9 @@ pub enum CallbackRet {
 
 /// Callback functions a user may or may not implement.
 pub trait HandlerCallbacks {
-    fn ds_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
+    fn ds_b_callback(&mut self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
     fn ds_nb_callback(&self, _in_data: Vec<u8>){}
-    fn us_b_callback(&self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
+    fn us_b_callback(&mut self, _in_data: Vec<u8>) -> CallbackRet {CallbackRet::Relay(_in_data)}
     fn us_nb_callback(&self, _in_data: Vec<u8>){}
 }
 

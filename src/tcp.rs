@@ -128,7 +128,6 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
                                     return;
                                 }
                             }
-
                         },
                         // UpStream Write Request
                         FullDuplexTcpState::UpStreamWrite(data) => {
