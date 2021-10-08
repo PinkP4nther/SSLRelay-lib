@@ -15,7 +15,7 @@ A TCP relay library that can handle raw TCP and SSL/TLS connections. You can rea
 > 
 > 09/14/2021 | Race condition between UP/DOWN stream threads fixed. As well as major performance improvements!
 > 
-> 09/16/2021 | Added Callback return types that give much more control over > data.
+> 09/16/2021 | Added Callback return types that give much more control over  data.
 > 
 > 09/16/2021 | Version 0.3
 > 
