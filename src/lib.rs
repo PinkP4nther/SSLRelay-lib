@@ -176,8 +176,8 @@ pub struct RelayConfig {
     pub bind_port: String,
     pub remote_host: String,
     pub remote_port: String,
-    pub ssl_private_key_path: String,
-    pub ssl_cert_path: String,
+    pub ssl_private_key_path: Option<String>,
+    pub ssl_cert_path: Option<String>,
 }
 
 /// CallbackRet for blocking callback functions

@@ -45,8 +45,8 @@ fn main() {
             bind_port: "443".to_string(),
             remote_host: "remote.com".to_string(),
             remote_port: "443".to_string(),
-            ssl_private_key_path: "./remote.com.key".to_string(),
-            ssl_cert_path: "./remote.com.crt".to_string(),
+            ssl_private_key_path: Some("./remote.com.key".to_string()),
+            ssl_cert_path: Some("./remote.com.crt".to_string()),
         })
     );
     // Start listening

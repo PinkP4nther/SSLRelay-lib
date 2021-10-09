@@ -149,8 +149,8 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
         } else if upstream_tls_conf == "raw" {
             upstream_data_type = TCPDataType::RAW;
         } else {
-            println!("[SSLRelay Error] Unrecognized TCPDataType for upstream_data_type. Data type received was not 'tcp' or 'tls'!");
-            process::exit(1); // Create error handling for load_relay_config()
+            panic!("[SSLRelay Error] Unrecognized TCPDataType for upstream_data_type. Data type received was not 'tcp' or 'tls'!");
+// Create error handling for load_relay_config()
         }
 
         if downstream_tls_conf == "tls" {
@@ -158,8 +158,19 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
         } else if downstream_tls_conf == "raw" {
             downstream_data_type = TCPDataType::RAW;
         } else {
-            println!("[SSLRelay Error] Unrecognized TCPDataType for downstream_data_type. Data type received was not 'tcp' or 'tls'!");
-            process::exit(1); // Create error handling for load_relay_config()
+            panic!("[SSLRelay Error] Unrecognized TCPDataType for downstream_data_type. Data type received was not 'tcp' or 'tls'!");
+// Create error handling for load_relay_config()
+        }
+
+        let mut ssl_pk_path = None;
+        let mut ssl_c_path = None;
+
+        if !ssl_private_key_path.is_empty() {
+            ssl_pk_path = Some(ssl_private_key_path.clone());
+        }
+
+        if !ssl_cert_path.is_empty() {
+            ssl_c_path = Some(ssl_cert_path.clone());
         }
 
         RelayConfig {
@@ -167,26 +178,30 @@ impl<H: HandlerCallbacks + std::marker::Sync + std::marker::Send + Clone + 'stat
             downstream_data_type,
             bind_host: bind_host.clone(),
             bind_port: bind_port.clone(),
-            ssl_private_key_path: ssl_private_key_path.clone(),
-            ssl_cert_path: ssl_cert_path.clone(),
+            ssl_private_key_path: ssl_pk_path,
+            ssl_cert_path: ssl_c_path,
             remote_host: remote_host.clone(),
             remote_port: remote_port.clone(),
         }
     }
 
-    fn setup_ssl_config(&self, priv_key: String, cert: String) -> Arc<SslAcceptor> {
-        
-        if !Path::new(priv_key.as_str()).exists() {
-            println!("[-] [{}] does not exist!", priv_key);
-            process::exit(-1);
-        } else if !Path::new(cert.as_str()).exists() {
-            println!("[-] [{}] does not exist!", cert);
-            process::exit(-1);
-        }
+    fn setup_ssl_config(&self, priv_key: Option<String>, cert: Option<String>) -> Arc<SslAcceptor> {
 
         let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-        acceptor.set_private_key_file(priv_key, SslFiletype::PEM).unwrap();
-        acceptor.set_certificate_chain_file(cert).unwrap();
+
+        let private_key = priv_key.expect("[SSLRelay Error] No private key file specified!");
+        let certificate = cert.expect("[SSLRelay Error] No certificate file specified!");
+        
+        if !Path::new(&private_key).exists() {
+            panic!("[-] [{}] does not exist!", private_key);
+        }
+        acceptor.set_private_key_file(private_key, SslFiletype::PEM).unwrap();
+
+        if !Path::new(&certificate).exists() {
+            panic!("[-] [{}] does not exist!", certificate);
+        }
+        acceptor.set_certificate_chain_file(certificate).unwrap();
+
         acceptor.check_private_key().unwrap();
         Arc::new(acceptor.build())
     }
