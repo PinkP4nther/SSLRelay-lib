@@ -1,6 +1,6 @@
 [package]
 name = "sslrelay"
-version = "0.4.4"
+version = "0.5"
 authors = ["PinkP4nther <pinkp4nther@protonmail.com> @Pink_P4nther"]
 edition = "2018"
 description = "A TCP relay library for relaying/modifying/spoofing TCP traffic by implementing callback code."
