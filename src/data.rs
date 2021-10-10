@@ -79,7 +79,9 @@ impl DownStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamWrite(self.internal_data_buffer.clone())) {
-                        Self::handle_error(format!("Failed to send UpStreamWrite to main thread: {}", e).as_str());
+                        
+                        //Self::handle_error(format!("Failed to send UpStreamWrite to main thread: {}", e).as_str());
+                        let _ = raw_stream.shutdown(Shutdown::Both);
                         return;
                     }
 
@@ -150,7 +152,8 @@ impl DownStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::UpStreamWrite(self.internal_data_buffer.clone())) {
-                        Self::handle_error(format!("Failed to send UpStreamWrite to main thread: {}", e).as_str());
+                        
+                        //Self::handle_error(format!("Failed to send UpStreamWrite to main thread: {}", e).as_str());
                         let _ = tls_stream.shutdown();
                         return;
                     }
@@ -292,7 +295,9 @@ impl UpStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamWrite(self.internal_data_buffer.clone())) {
-                        Self::handle_error(format!("Failed to send DownStreamWrite to main thread: {}", e).as_str());
+                        
+                        //Self::handle_error(format!("Failed to send DownStreamWrite to main thread: {}", e).as_str());
+                        let _ = raw_stream.shutdown(Shutdown::Both);
                         return;
                     }
 
@@ -359,7 +364,9 @@ impl UpStreamInner {
                 if byte_count > 0 {
 
                     if let Err(e) = data_out.send(FullDuplexTcpState::DownStreamWrite(self.internal_data_buffer.clone())) {
-                        Self::handle_error(format!("Failed to send DownStreamWrite to main thread: {}", e).as_str());
+
+                        //Self::handle_error(format!("Failed to send DownStreamWrite to main thread: {}", e).as_str());
+                        let _ = tls_stream.shutdown();
                         return;
                     }
 
