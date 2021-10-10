@@ -1,4 +1,4 @@
-use sslrelay::{self, ConfigType, HandlerCallbacks, CallbackRet};
+use sslrelay::{self, TLSConfig, TCPDataType, RelayConfig, HandlerCallbacks, CallbackRet};
 
 // Handler object
 #[derive(Clone)] // Must have Clone trait implemented.
@@ -38,7 +38,21 @@ impl HandlerCallbacks for Handler {
 fn main() {
 
     // Create new SSLRelay object
-    let mut relay = sslrelay::SSLRelay::new(Handler, ConfigType::Default);
+    let mut relay = sslrelay::SSLRelay::new(
+        Handler, 
+        RelayConfig {
+            downstream_data_type: TCPDataType::TLS,
+            upstream_data_type: TCPDataType::TLS,
+            bind_host: "0.0.0.0".to_string(),
+            bind_port: "443".to_string(),
+            remote_host: "remote.com".to_string(),
+            remote_port: "443".to_string(),
+            tls_config: TLSConfig::FILE{
+                certificate_path: "./tls.crt".to_string(),
+                private_key_path: "./tls.key".to_string(),
+            },
+        }
+    );
 
     // Start listening
     relay.start();

@@ -30,3 +30,5 @@ A TCP relay library that can handle raw TCP and SSL/TLS connections. You can rea
 > 10/07/2021 | **v0.4.3** | Blocking callbacks now pass self as a mutable reference. This can allow the developer to create structures that can be accessed every stream write. (ONLY in the BLOCKING callback). The self object is refreshed per TCP connection. Separate TCP connections can not touch eachothers data.
 >
 > 10/08/2021 | **v0.4.4** | Added ability to set TLS certificate and certificate private key to nothing. When passing RelayConfig to the relay object use the 'None' variant of Option<T> enum. In a config file put the cert path and key path as an empty 'String' to specify 'None'.
+>
+> 10/09/2021 | **v0.6.0** | Gone away with 'ConfigType<T>'! No more specifying config files unless the developer implements it themself. A new config enum 'TLSConfig' has been introduced. This has 3 variants FILE(Specify the cert and pk file paths), DATA(Pass the cert(PEM) data and the pk(PEM) data as bytes), NONE(This is when you are not using TLS on the listening/downstream side of the relay).

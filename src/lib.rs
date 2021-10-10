@@ -23,7 +23,7 @@
 //! ```
 //! ## Example (basic.rs)
 //! ```
-//! use sslrelay::{self, ConfigType, RelayConfig, HandlerCallbacks, CallbackRet, TCPDataType};
+//! use sslrelay::{self, RelayConfig, HandlerCallbacks, CallbackRet, TCPDataType, TLSConfig};
 //! 
 //! // Handler object
 //! #[derive(Clone)] // Must have Clone trait implemented.
@@ -63,29 +63,36 @@
 //!     // Create new SSLRelay object
 //!     let mut relay = sslrelay::SSLRelay::new(
 //!         Handler, 
-//!         ConfigType::Conf(RelayConfig {
+//!         RelayConfig {
 //!             downstream_data_type: TCPDataType::TLS,
 //!             upstream_data_type: TCPDataType::TLS,
 //!             bind_host: "0.0.0.0".to_string(),
 //!             bind_port: "443".to_string(),
 //!             remote_host: "remote.com".to_string(),
 //!             remote_port: "443".to_string(),
-//!             ssl_private_key_path: Some("./remote.com.key".to_string()),
-//!             ssl_cert_path: Some("./remote.com.crt".to_string()),
-//!         })
+//!             tls_config: TLSConfig::FILE{
+//!                 certificate_path: "./tls.crt".to_string(),
+//!                 private_key_path: "./tls.key".to_string(),
+//!             },
+//!         }
 //!     );
+//! 
 //!     // Start listening
 //!     relay.start();
 //! }
 //! ```
 
-use openssl::ssl::{
-    SslVerifyMode,
-    SslConnector,
-    SslAcceptor,
-    SslStream,
-    SslFiletype,
-    SslMethod
+use openssl::{
+    x509::X509,
+    pkey::PKey,
+    ssl::{
+        SslVerifyMode,
+        SslConnector,
+        SslAcceptor,
+        SslStream,
+        SslFiletype,
+        SslMethod,
+    }
 };
 
 use std::net::{
@@ -104,8 +111,6 @@ use std::{
 };
 
 use std::{
-    env,
-    fs,
     path::Path,
     time::Duration,
 };
@@ -121,8 +126,6 @@ use std::sync::mpsc::{
     Receiver,
     Sender
 };
-
-use toml::Value as TValue;
 
 mod data;
 mod tcp;
@@ -154,16 +157,15 @@ pub enum TCPDataType {
     RAW,
 }
 
-/// The relay configuration type.
-/// Env: Uses the SSLRELAY_CONFIG environmental variable for the path to the config file.
-/// Path: Specifies the path to the config file.
-/// Conf: For passing an instance of the object instead of using a config file.
-/// Default: Uses ./relay_config.toml config file.
-pub enum ConfigType<T> {
-    Env,
-    Path(T),
-    Conf(RelayConfig),
-    Default,
+/// TLSConfig is used to specify TLS options.
+/// FILE is for specifying a path to a certificate and private key.
+/// DATA is for passing the certificate and private key bytes directly.
+/// NONE is for when you are not using TLS on the listening/downstream side of the relay.
+#[derive(Clone)]
+pub enum TLSConfig {
+    FILE {certificate_path: String, private_key_path: String},
+    DATA {certificate: Vec<u8>, private_key: Vec<u8>},
+    NONE,
 }
 
 /// Relay Config structure for passing into the SSLRelay::new() config parameter.
@@ -175,8 +177,7 @@ pub struct RelayConfig {
     pub bind_port: String,
     pub remote_host: String,
     pub remote_port: String,
-    pub ssl_private_key_path: Option<String>,
-    pub ssl_cert_path: Option<String>,
+    pub tls_config: TLSConfig,
 }
 
 /// CallbackRet for blocking callback functions

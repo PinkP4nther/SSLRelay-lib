@@ -1,6 +1,6 @@
 [package]
 name = "sslrelay"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["PinkP4nther <pinkp4nther@protonmail.com> @Pink_P4nther"]
 edition = "2018"
 description = "A TCP relay library for relaying/modifying/spoofing TCP traffic by implementing callback code."
@@ -11,6 +11,3 @@ license = "Apache-2.0"
 
 [dependencies.openssl]
 version = "0.10.36"
-
-[dependencies.toml]
-version = "0.5.8"

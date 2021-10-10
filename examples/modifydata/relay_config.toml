@@ -1,8 +1,0 @@
-bind_host = "0.0.0.0"
-bind_port = "443"
-ssl_private_key_path = "./remote.com.key"
-ssl_cert_path = "./remote.com.crt"
-remote_host = "remote.com"
-remote_port = "443"
-downstream_data_type = "tls"
-upstream_data_type = "tls"
