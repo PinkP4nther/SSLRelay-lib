@@ -1,7 +1,7 @@
 //! ## SSLRelay
 
 //! Library for relaying TCP traffic as well as TLS encrypted TCP traffic.
-//! This Library allows you to implement callback functions for upstream and downstream traffic.
+//! This library allows you to implement callback functions for upstream and downstream traffic.
 //! These callbacks can R/W the data from a stream(Blocking) or only R the data(Non-Blocking).
 //!```
 //!pub trait HandlerCallbacks {
